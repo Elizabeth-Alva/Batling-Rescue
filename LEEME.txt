@@ -1,0 +1,16 @@
+MURCIELAGO: RESCATE EN LA CUEVA (Pygame)
+
+COMO JUGAR
+  Windows: doble clic en JUGAR.bat (instala pygame la primera vez y abre el juego).
+  Manual:  pip install pygame   y luego   python murcielago_cueva.py
+  Requiere Python 3.8 o superior (python.org; marca "Add Python to PATH" al instalar).
+
+CONTROLES
+  WASD / Flechas ... volar          Raton ........... apuntar la linterna
+  F o clic derecho . linterna       Espacio / clic izq. grito sonico
+  P ................ pausa         ESC ............. salir
+  R ................ reiniciar (al terminar)
+
+OBJETIVO
+  Lleva las 10 crias al nido (circulo marron). Sus chillidos atraen a las aranas.
+  Cada cria rescatada sube el peligro. Todo el audio y los graficos se generan por codigo.
