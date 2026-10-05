@@ -1,9 +1,21 @@
 """Bucle principal y gestor de escenas con fundido entre ellas."""
+import asyncio
+import time
+
 import pygame
 
 import ui
-from settings import W, H, FPS, TITLE, DEFAULT_BRIGHTNESS
+from settings import IS_WEB, W, H, FPS, TITLE, DEFAULT_BRIGHTNESS
 from sound import SoundManager
+
+
+def _web_log(msg):
+    """Escribe en la consola del navegador (F12) cuando corre con pygbag."""
+    try:
+        import platform
+        platform.window.console.log(msg)
+    except Exception:
+        print(msg)
 
 
 class Game:
@@ -47,18 +59,29 @@ class Game:
         elif self.fade_dir < 0 and self.fade <= 0:
             self.fade_dir = 0
 
-    def run(self):
+    async def run(self):
+        frames, t_upd, t_drw, t_log = 0, 0.0, 0.0, time.perf_counter()
         while self.running:
-            dt = min(self.clock.tick(FPS) / 1000, .05)
+            dt = min(self.clock.tick(FPS) / 1000, .1 if IS_WEB else .05)
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     self.running = False
                 elif self.pending is None:
                     self.scene.handle(ev)
+            t0 = time.perf_counter()
             self.scene.update(dt)
             self._fade_step(dt)
+            t1 = time.perf_counter()
             self.scene.draw(self.screen)
+            t_upd, t_drw = t_upd + t1 - t0, t_drw + time.perf_counter() - t1
             if self.fade > 0:
                 self.veil.set_alpha(int(self.fade))
                 self.screen.blit(self.veil, (0, 0))
             pygame.display.flip()
+            await asyncio.sleep(0)               # cede el control al navegador (pygbag)
+            if IS_WEB:                            # rendimiento visible en la consola del navegador
+                frames += 1
+                now = time.perf_counter()
+                if now - t_log >= 3:                # cada 3 s de reloj real
+                    _web_log(f"[perf] {frames / (now - t_log):.1f} fps | update {t_upd / frames * 1000:.1f} ms | draw {t_drw / frames * 1000:.1f} ms")
+                    frames, t_upd, t_drw, t_log = 0, 0.0, 0.0, now

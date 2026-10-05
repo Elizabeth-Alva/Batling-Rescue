@@ -1,27 +1,46 @@
 """Interfaz: fuentes, dibujo de personajes, menú, fondo animado, HUD y minimapa."""
 import math
+import os
 import random
 
 import pygame
 
-from settings import (W, H, TAU, GOAL, SHIELD_T, SHIELD_CD, TILE, NEST, SONAR_EXPOSE_T, SCREECH_CD, C_TEXT, C_PURPLE, C_GREEN,
+from settings import (IS_WEB, W, H, TAU, GOAL, SHIELD_T, SHIELD_CD, TILE, NEST, SONAR_EXPOSE_T, SCREECH_CD, C_TEXT, C_PURPLE, C_GREEN,
                       C_PUP, MAP_W, MAP_H)
 
 F_S = F_M = F_L = F_XL = F_XS = None
+KEY = (255, 0, 255)
+
+
+def _font(size):
+    """Arial en escritorio; en el navegador (o con BATLING_DEFAULT_FONT=1) la fuente incluida en pygame."""
+    if not (IS_WEB or os.environ.get("BATLING_DEFAULT_FONT")):
+        return pygame.font.SysFont("arial", size, bold=True)
+    return pygame.font.Font(None, round(size * 1.3))
 
 
 def init_fonts():
     global F_S, F_M, F_L, F_XL, F_XS
-    F_XS = pygame.font.SysFont("arial", 15, bold=True)
-    F_S = pygame.font.SysFont("arial", 18, bold=True)
-    F_M = pygame.font.SysFont("arial", 28, bold=True)
-    F_L = pygame.font.SysFont("arial", 54, bold=True)
-    F_XL = pygame.font.SysFont("arial", 92, bold=True)
+    F_XS, F_S, F_M, F_L, F_XL = (_font(s) for s in (15, 18, 28, 54, 92))
 
 
 # ---------------------------------------------------------------- dibujo básico
+_TEXT_CACHE = {}
+
+
+def render_text(f, t, col):
+    """Texto ya renderizado (se reutiliza: en el navegador renderizar fuentes cada frame es caro)."""
+    key = (id(f), t, col)
+    im = _TEXT_CACHE.get(key)
+    if im is None:
+        if len(_TEXT_CACHE) > 400:
+            _TEXT_CACHE.clear()
+        im = _TEXT_CACHE[key] = f.render(t, True, col)
+    return im
+
+
 def text(s, f, t, x, y, col=C_TEXT, center=False):
-    im = f.render(t, True, col)
+    im = render_text(f, t, col)
     s.blit(im, im.get_rect(center=(x, y)) if center else (x, y))
 
 
@@ -207,23 +226,35 @@ class Backdrop:
         self.base.blit(glow, (0, 0))
         self.layers = [(self._layer(n, sz, col), spd) for n, sz, col, spd in
                        ((9, (60, 150), (14, 10, 24), 8), (11, (80, 190), (10, 7, 18), 20), (8, (110, 250), (5, 4, 10), 44))]
+        self.ring_col = (110, 150, 230)
         self.bats = [[random.uniform(-100, W), random.uniform(60, 330), random.uniform(60, 130) * random.choice((1, -1)),
                       random.uniform(.5, 1.1), random.uniform(0, 6)] for _ in range(4)]
         self.eyes = [[random.randint(40, W - 40), random.randint(H - 210, H - 60), random.uniform(0, 6)] for _ in range(5)]
         self.dust = [[random.uniform(0, W), random.uniform(0, H), random.uniform(6, 22), random.uniform(.4, 1.4)] for _ in range(60)]
-        self.fx = pygame.Surface((W, H), pygame.SRCALPHA)
 
     @staticmethod
     def _layer(n, size, col):
-        s = pygame.Surface((W, H), pygame.SRCALPHA)
+        """Devuelve (franja_superior, franja_inferior, alto_sup, alto_inf): solo el área que ocupan las rocas.
+        Cada franja mide el doble de ancho para poder desplazarla con un único blit sin tener que envolver."""
+        top_h, bot_h = size[1] + 4, int(size[1] * .8) + 4
+        top, bot = pygame.Surface((2 * W, top_h)), pygame.Surface((2 * W, bot_h))
+        for srf in (top, bot):                          # colorkey: más barato que el alfa por píxel
+            srf.fill(KEY)
+            srf.set_colorkey(KEY)
         for _ in range(n):
             x, hh, bw = random.randint(0, W), random.randint(*size), random.randint(30, 80)
-            for ox in (0, -W):
-                pygame.draw.polygon(s, col, [(x + ox - bw // 2, -2), (x + ox + bw // 2, -2), (x + ox, hh)])
+            for ox in (0, W):
+                pygame.draw.polygon(top, col, [(x + ox - bw // 2, -2), (x + ox + bw // 2, -2), (x + ox, hh)])
             x, hh, bw = random.randint(0, W), random.randint(size[0] // 2, int(size[1] * .8)), random.randint(30, 80)
-            for ox in (0, -W):
-                pygame.draw.polygon(s, col, [(x + ox - bw // 2, H + 2), (x + ox + bw // 2, H + 2), (x + ox, H - hh)])
-        return s
+            for ox in (0, W):
+                pygame.draw.polygon(bot, col, [(x + ox - bw // 2, bot_h + 2), (x + ox + bw // 2, bot_h + 2), (x + ox, bot_h - hh)])
+        return top, bot, top_h, bot_h
+
+    def _blit_layer(self, s, layer, spd):
+        top, bot, th, bh = layer
+        ox = int((self.t * spd) % W)
+        s.blit(top, (0, 0), (ox, 0, W, th))
+        s.blit(bot, (0, H - bh), (ox, 0, W, bh))
 
     def update(self, dt):
         self.t += dt
@@ -240,16 +271,11 @@ class Backdrop:
 
     def draw(self, s, sonar_at=(W // 2, 190)):
         s.blit(self.base, (0, 0))
-        fx = self.fx
-        fx.fill((0, 0, 0, 0))
-        for k in range(3):                                    # ondas de sonar periódicas
+        for k in range(3):                                    # ondas de sonar periódicas (directas, sin capa alfa)
             p = ((self.t + k * 1.1) % 3.3) / 3.3
-            pygame.draw.circle(fx, (110, 150, 230, int(110 * (1 - p))), sonar_at, int(40 + 700 * p), 2)
-        s.blit(fx, (0, 0))
+            pygame.draw.circle(s, tuple(int(c * .5 * (1 - p)) + 10 for c in self.ring_col), sonar_at, int(40 + 700 * p), 2)
         for lay, spd in self.layers[:2]:
-            ox = int((self.t * spd) % W)
-            s.blit(lay, (-ox, 0))
-            s.blit(lay, (W - ox, 0))
+            self._blit_layer(s, lay, spd)
         for b in self.bats:
             wob = math.sin(self.t * .8 + b[4]) * 25
             draw_bat(s, b[0], b[1] + wob, self.t * 10 + b[4], b[3] * (1 if b[2] > 0 else 1), (28, 20, 44), (36, 28, 56), (70, 55, 105))
@@ -260,9 +286,7 @@ class Backdrop:
                 for sd in (-6, 6):
                     pygame.draw.circle(s, (min(255, a), int(a * .15), int(a * .12)), (int(e[0] + sd), int(e[1])), 3)
         lay, spd = self.layers[2]
-        ox = int((self.t * spd) % W)
-        s.blit(lay, (-ox, 0))
-        s.blit(lay, (W - ox, 0))
+        self._blit_layer(s, lay, spd)
         for d in self.dust:
             c = int(60 + 40 * math.sin(self.t * 2 + d[3] * 5))
             s.fill((c, c - 10, c + 20), (int(d[0]), int(d[1]), 2, 2))

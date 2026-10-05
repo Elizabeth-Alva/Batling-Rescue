@@ -9,7 +9,7 @@ import ui
 from camera import Camera
 from enemies import Enemy, pick_kind, BIG
 from events import EventBus, NoiseEvent, ImpactEvent, SonarEvent
-from lighting import Lighting
+from lighting import Lighting, ring
 from map import CaveMap
 from player import Bat
 from pups import Pup
@@ -30,7 +30,6 @@ class PlayScene(Scene):
         self.cave = CaveMap()
         self.light = Lighting(self.cave.crystals, self.cave.fungi)
         self.canvas = pygame.Surface((W, H))
-        self.fx = pygame.Surface((W, H), pygame.SRCALPHA)
         self.state = 'play'
         self.bat = Bat()
         self.camera = Camera(self.bat.x, self.bat.y)
@@ -260,16 +259,12 @@ class PlayScene(Scene):
                 ex, ey = cam.apply(e.x, e.y)
                 for sd in (-4, 4):
                     pygame.draw.circle(c, col, (int(ex + sd * e.spec['size']), int(ey - 3)), 2 + int(e.spec['size'] > 1.5))
-        fx = self.fx
-        fx.fill((0, 0, 0, 0))
-        for x, y, r, mr, col in self.rings:
+        for x, y, r, mr, col in self.rings:                  # anillos de ruido (sin capa alfa de pantalla completa)
             sx, sy = cam.apply(x, y)
-            pygame.draw.circle(fx, (*col, int(130 * (1 - r / mr))), (int(sx), int(sy)), int(r), 2)
-        self.light.draw_sonar_ring(fx, self)
-        self.light.draw_shield(fx, self, self.t)
-        self.light.draw_trail(fx, self)
-        c.blit(fx, (0, 0))
-        self.light.finish(c)
+            ring(c, sx, sy, r, col, .7 * (1 - r / mr), 2)
+        self.light.draw_sonar_ring(c, self)
+        self.light.draw_shield(c, self, self.t)
+        self.light.draw_trail(c, self)
         for x, y, t, col, life in self.texts:
             sx, sy = cam.apply(x, y)
             ui.text(c, ui.F_S, t, sx, sy, col, True)

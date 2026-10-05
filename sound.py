@@ -1,11 +1,13 @@
 """Síntesis de sonidos por código y gestor con atenuación por distancia."""
 import math
+import os
 import random
+import re
 from array import array
 
 import pygame
 
-from settings import TAU
+from settings import IS_WEB, TAU
 
 SR = 22050
 
@@ -76,11 +78,39 @@ def build_sounds():
     return S
 
 
+SOUND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sounds')
+
+
+def load_sounds(folder=SOUND_DIR):
+    """Carga los .ogg precalculados (tools/export_sounds.py). nombre_0.ogg, nombre_1.ogg... forman una lista."""
+    S = {}
+    for fn in sorted(os.listdir(folder)):
+        stem, ext = os.path.splitext(fn)
+        if ext != '.ogg':
+            continue
+        snd = pygame.mixer.Sound(os.path.join(folder, fn))
+        m = re.match(r'^(.*)_(\d+)$', stem)
+        if m:
+            S.setdefault(m.group(1), []).append(snd)
+        else:
+            S[stem] = snd
+    return S
+
+
+def get_sounds():
+    """En el navegador (o si existe la carpeta sounds/ y BATLING_SOUND_FILES=1) usa los archivos; si no, sintetiza."""
+    if (IS_WEB or os.environ.get('BATLING_SOUND_FILES')) and os.path.isdir(SOUND_DIR):
+        S = load_sounds()
+        if 'amb' in S:
+            return S
+    return build_sounds()
+
+
 class SoundManager:
     """Reproduce sonidos con volumen según la distancia al 'oyente' (el murciélago)."""
 
     def __init__(self):
-        self.S = build_sounds()
+        self.S = get_sounds()
         self.listener = None            # callable -> (x, y) o None
         self.amb_ch = None
 

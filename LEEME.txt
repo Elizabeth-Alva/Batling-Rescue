@@ -31,3 +31,15 @@ CODIGO
   player.py · enemies.py · pups.py · map.py · camera.py · lighting.py · events.py
   difficulty.py · sound.py · ui.py · settings.py
   Pruebas: python -m unittest discover -s tests
+
+VERSION WEB (navegador, GitHub Pages)
+  Se compila con pygbag (WebAssembly). Requiere:  pip install -r requirements-web.txt
+  Compilar:    python tools/build_web.py          (deja el sitio en web_build/site/)
+               python tools/build_web.py --zip    (ademas genera web_build/batlingrescue.zip para itch.io)
+  Probar local: python -m pygbag web_build/batlingrescue   y abrir http://localhost:8000
+                (hace falta el servidor de pygbag; "http.server" no sirve el runtime)
+  Publicar: en GitHub -> Settings -> Pages -> Source: "GitHub Actions". Cada push a main
+            ejecuta .github/workflows/pages.yml (tests + compilacion + despliegue).
+  En el navegador: hay que hacer un clic para empezar (activa el audio), no hay opcion "Salir",
+  los sonidos se precalculan como .ogg y la consola del navegador (F12) muestra "[perf] N fps".
+  Ya no hace falta que el juego de escritorio cambie: python main.py sigue funcionando igual.

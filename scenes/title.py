@@ -5,13 +5,13 @@ import pygame
 
 import ui
 from scenes import Scene
-from settings import W, H
+from settings import IS_WEB, W, H
 
 
 class TitleScene(Scene):
     def __init__(self, game):
         super().__init__(game)
-        self.menu = ui.Menu(['Jugar', 'Instrucciones', 'Salir'], W // 2, 350)
+        self.menu = ui.Menu(['Jugar', 'Instrucciones'] + ([] if IS_WEB else ['Salir']), W // 2, 350)
         self.t = 0.0
         self.glow = ui.make_glow(ui.F_XL, 'BATLING RESCUE', (150, 90, 255), blur=6, pad=40)
         self.title = ui.F_XL.render('BATLING RESCUE', True, (232, 218, 255))
@@ -21,7 +21,7 @@ class TitleScene(Scene):
         self.game.sounds.ambient(.3)
 
     def handle(self, ev):
-        if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+        if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE and not IS_WEB:
             self.game.running = False
             return
         choice = self.menu.handle(ev, self.game.sounds)
@@ -48,4 +48,4 @@ class TitleScene(Scene):
         ui.text(screen, ui.F_XS, 'Un murciélago, una cueva sin luz y crías que esperan en la oscuridad',
                 cx, 254, (140, 125, 170), True)
         self.menu.draw(screen, 1 / 60)
-        ui.text(screen, ui.F_XS, '↑ ↓ / ratón: elegir        Enter / clic: aceptar', cx, H - 28, (130, 118, 160), True)
+        ui.text(screen, ui.F_XS, 'Flechas / ratón: elegir        Enter / clic: aceptar', cx, H - 28, (130, 118, 160), True)

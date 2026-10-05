@@ -1,5 +1,8 @@
 """Constantes globales del juego (todo lo balanceable vive aquí o en difficulty.py)."""
 import math
+import sys
+
+IS_WEB = sys.platform == "emscripten"     # ejecutándose en el navegador (pygbag)
 
 W, H = 960, 640
 FPS = 60

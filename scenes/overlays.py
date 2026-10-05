@@ -5,10 +5,15 @@ import ui
 from settings import W, H, GOAL, C_GREEN, C_RED, C_PURPLE
 
 
+_VEIL = None
+
+
 def draw_overlay(screen, state, rescued, t):
-    v = pygame.Surface((W, H), pygame.SRCALPHA)
-    v.fill((0, 0, 10, 195))
-    screen.blit(v, (0, 0))
+    global _VEIL
+    if _VEIL is None:                                   # el velo se crea una sola vez
+        _VEIL = pygame.Surface((W, H), pygame.SRCALPHA)
+        _VEIL.fill((0, 0, 10, 195))
+    screen.blit(_VEIL, (0, 0))
     cx = W // 2
     if state == 'pause':
         ui.text(screen, ui.F_L, 'PAUSA', cx, H // 2 - 20, center=True)

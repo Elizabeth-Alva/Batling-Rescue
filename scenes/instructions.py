@@ -51,6 +51,9 @@ class InstructionsScene(Scene):
     def __init__(self, game):
         super().__init__(game)
         self.t = 0.0
+        self.panel = pygame.Surface((W - 80, H - 40), pygame.SRCALPHA)       # se crea una sola vez
+        pygame.draw.rect(self.panel, (6, 4, 16, 205), self.panel.get_rect(), border_radius=18)
+        pygame.draw.rect(self.panel, (110, 80, 170, 220), self.panel.get_rect(), 2, border_radius=18)
 
     def handle(self, ev):
         if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE):
@@ -66,10 +69,7 @@ class InstructionsScene(Scene):
 
     def draw(self, screen):
         self.game.backdrop.draw(screen)
-        veil = pygame.Surface((W - 80, H - 40), pygame.SRCALPHA)
-        pygame.draw.rect(veil, (6, 4, 16, 205), veil.get_rect(), border_radius=18)
-        pygame.draw.rect(veil, (110, 80, 170, 220), veil.get_rect(), 2, border_radius=18)
-        screen.blit(veil, (40, 20))
+        screen.blit(self.panel, (40, 20))
         ui.text(screen, ui.F_L, 'INSTRUCCIONES', W // 2, 62, C_PURPLE, True)
         y = 108
         for kind, head, keys, desc in ENTRIES:

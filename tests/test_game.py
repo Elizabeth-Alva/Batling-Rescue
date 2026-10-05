@@ -300,7 +300,8 @@ class GameTests(unittest.TestCase):
         s.enemies, s.pups = [], []
         b, cave = s.bat, s.cave
         for tx, ty in cave.open:                             # un hueco amplio y despejado
-            if all(not cave.solid(tx + i, ty + j) for i in range(-4, 5) for j in range(-4, 5)):
+            if math.dist((tx * TILE, ty * TILE), NEST) > 450 and all(
+                    not cave.solid(tx + i, ty + j) for i in range(-4, 5) for j in range(-4, 5)):
                 b.x, b.y = tx * TILE + 16, ty * TILE + 16
                 break
         else:
@@ -312,11 +313,13 @@ class GameTests(unittest.TestCase):
             self.game.brightness = lv
             s.draw(screen)
             cx, cy = s.camera.apply(b.x, b.y)
-            vals.append(self._lum(s.canvas, cx, cy, 120, 190))
+            vals.append(self._lum(s.canvas, cx, cy, 60, 130))      # dentro del hueco despejado (±4 tiles)
         self.game.brightness = DEFAULT_BRIGHTNESS
-        self.assertLess(vals[0], vals[1])
-        self.assertLess(vals[1], vals[2])
-        self.assertGreater(vals[DEFAULT_BRIGHTNESS], 45)     # a ~150 px del murciélago se distingue el suelo
+        # (cerca del nido o de cristales la luz puede saturar y dos niveles empatar, por eso <=)
+        self.assertLessEqual(vals[0], vals[1])
+        self.assertLessEqual(vals[1], vals[2])
+        self.assertLess(vals[0], vals[2])
+        self.assertGreater(vals[DEFAULT_BRIGHTNESS], 50)     # a 60-130 px del murciélago se distingue bien el suelo
 
     def test_visited_tiles_are_remembered(self):
         s = PlayScene(self.game)

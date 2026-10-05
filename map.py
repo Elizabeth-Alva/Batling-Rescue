@@ -33,6 +33,7 @@ class CaveMap:
         self.bg = self._render()
         self.explored = bytearray(self.w * self.h)
         self.visited = bytearray(self.w * self.h)           # lo que has recorrido (memoria visual)
+        self.mem_version = 0                                # cambia cada vez que se recorre un tile nuevo
         self.mem = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
         self.minimap = pygame.Surface((self.w * 2, self.h * 2))
         self.minimap.fill((6, 5, 9))
@@ -290,6 +291,7 @@ class CaveMap:
             self.minimap.fill(col, (tx * 2, ty * 2, 2, 2))
         if mem and not self.visited[i]:
             self.visited[i] = 1
+            self.mem_version += 1
             self.mem.set_at((tx, ty), (0, 0, 0, MEMORY_ALPHA))
 
     def mark_circle(self, x, y, r, mem=False):

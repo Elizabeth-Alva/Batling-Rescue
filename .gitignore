@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+web_build/
+build/
+sounds/
