@@ -5,21 +5,23 @@ import pygame
 
 import ui
 from scenes import Scene
-from settings import W, H, GOAL, C_PURPLE, C_GREEN, C_SONAR, C_IMPACT
+from settings import W, H, C_PURPLE, C_GREEN, C_GOLD, C_PUP
 
 ENTRIES = [
-    ('bat', 'Volar y rescatar', 'WASD / Flechas: volar',
-     'Lleva a las crías hasta el nido (círculo marrón). Sigue sus chillidos y las flechas rosadas del borde.'),
-    ('screech', 'Grito sónico', 'Espacio o clic izquierdo',
-     'Aturde y daña a los enemigos cercanos, pero también hace ruido. Tiene enfriamiento.'),
-    ('shield', 'ESCUDO', 'E, Shift o clic derecho',
-     'Durante 5 segundos no recibes daño y repeles a quien te toque. Luego hay que esperar para reusarlo.'),
-    ('sonar', 'SONAR', 'Q o clic central',
-     'Una onda ilumina TODA la cueva y el minimapa. A cambio, los enemigos cercanos te ven por completo.'),
-    ('wall', 'Cuidado con los choques', 'Vuela despacio junto a las paredes',
-     'Chocar contra la roca hace ruido y atrae a las criaturas hacia ese punto.'),
-    ('spider', 'El peligro crece', f'Rescata {GOAL} crías',
-     'Los enemigos aparecen sin parar, y con cada rescate son más rápidos. ¡Llegan depredadores enormes!'),
+    ('bat', 'Volar y rescatar', 'WASD / Flechas',
+     'Eres Mullo. Lleva a cada cría al punto de entrega (brillo dorado, arriba). Sigue chillidos y rastros.'),
+    ('screech', 'Grito sónico', 'Espacio o clic izq.',
+     'Aturde y daña a los cercanos, rompe telarañas y MARCA A LAS CRÍAS EN EL MINIMAPA. Tarda en recargarse.'),
+    ('dash', 'Impulso', 'Shift',
+     'Un empujón veloz para escapar o cruzar tramos abiertos. También se recarga.'),
+    ('shield', 'Escudo', 'E o clic derecho',
+     '5 segundos sin recibir daño; repele a quien te toque. Luego hay que esperar.'),
+    ('map', 'Minimapa', 'Siempre visible · M amplía',
+     'Muestra lo explorado, el punto de entrega y las crías que marcó tu último grito.'),
+    ('enemies', 'Arañas, escarabajos y cazadores', 'Oyen los chillidos',
+     'No son malvados: tienen hambre. Chocar con la roca hace ruido. Nadie entra al punto de entrega.'),
+    ('dawn', 'Antes del amanecer', '3 actos · 10 crías',
+     'Cada nivel tiene su reloj. Al amanecer la colonia se va, con Mullo o sin ella.'),
 ]
 
 
@@ -27,24 +29,34 @@ def icon(s, kind, cx, cy, t):
     if kind == 'bat':
         ui.draw_bat(s, cx, cy + 2, t * 9, .8)
     elif kind == 'shield':
-        r = 26 + int(2 * math.sin(t * 8))
+        r = 24 + int(2 * math.sin(t * 8))
         pygame.draw.circle(s, (40, 80, 110), (cx, cy), r)
         pygame.draw.circle(s, (170, 230, 255), (cx, cy), r, 3)
         ui.draw_bat(s, cx, cy + 1, t * 9, .45)
-    elif kind in ('screech', 'sonar'):
-        col = (150, 220, 255) if kind == 'screech' else C_SONAR
+    elif kind == 'screech':
         for k in range(3):
-            p = ((t * (1.2 if kind == 'screech' else .8) + k / 3) % 1)
-            pygame.draw.circle(s, tuple(min(255, int(c * (1 - p) + 20)) for c in col), (cx, cy), int(6 + 26 * p), 2)
+            p = ((t * 1.2 + k / 3) % 1)
+            pygame.draw.circle(s, tuple(min(255, int(c * (1 - p) + 20)) for c in (150, 220, 255)), (cx, cy), int(6 + 26 * p), 2)
         ui.draw_bat(s, cx, cy + 1, t * 9, .3)
-    elif kind == 'wall':
-        pygame.draw.rect(s, (40, 34, 46), (cx + 6, cy - 26, 20, 52))
-        pygame.draw.line(s, (100, 86, 110), (cx + 6, cy - 26), (cx + 6, cy + 26), 3)
-        p = (t * 1.5) % 1
-        pygame.draw.circle(s, tuple(min(255, int(c * (1 - p) + 20)) for c in C_IMPACT), (cx + 4, cy), int(4 + 24 * p), 2)
-        ui.draw_bat(s, cx - 16, cy, t * 9, .4)
+    elif kind == 'dash':
+        for k in range(4):
+            pygame.draw.line(s, (255, 200, 120), (cx - 30 + k * 4, cy - 6 + k * 4), (cx - 8 + k * 4, cy - 6 + k * 4), 2)
+        ui.draw_bat(s, cx + 10 + 4 * math.sin(t * 6), cy, t * 14, .45)
+    elif kind == 'map':
+        pygame.draw.rect(s, (10, 8, 20), (cx - 28, cy - 20, 56, 40), border_radius=4)
+        pygame.draw.rect(s, (110, 95, 140), (cx - 28, cy - 20, 56, 40), 1, border_radius=4)
+        pygame.draw.circle(s, C_GOLD, (cx - 16, cy - 10), 3)
+        pygame.draw.circle(s, (255, 235, 120), (cx + 2, cy + 4), 2)
+        if int(t * 3) % 2:
+            pygame.draw.circle(s, C_PUP, (cx + 18, cy + 10), 3)
+    elif kind == 'enemies':
+        ui.draw_spider(s, cx - 18, cy, t, .6, 0)
+        ui.draw_beetle(s, cx + 18, cy, t, -1.6, .7)
     else:
-        ui.draw_scorpion(s, cx + 4, cy, t, math.pi * .9 + .15 * math.sin(t * 2), .95)
+        for i in range(30):
+            f = i / 29
+            pygame.draw.line(s, (int(20 + 235 * f), int(30 + 120 * f), int(90 - 20 * f)), (cx - 28 + i * 2, cy - 14), (cx - 28 + i * 2, cy + 14), 2)
+        ui.draw_bat(s, cx, cy, t * 9, .35, (10, 6, 14), (14, 8, 18), (60, 40, 70))
 
 
 class InstructionsScene(Scene):
@@ -71,12 +83,11 @@ class InstructionsScene(Scene):
         self.game.backdrop.draw(screen)
         screen.blit(self.panel, (40, 20))
         ui.text(screen, ui.F_L, 'INSTRUCCIONES', W // 2, 62, C_PURPLE, True)
-        y = 108
+        y = 100
         for kind, head, keys, desc in ENTRIES:
-            icon(screen, kind, 100, y + 28, self.t)
-            ui.text(screen, ui.F_M, head, 160, y - 2, (240, 232, 255))
-            ui.text(screen, ui.F_S, keys, 160 + ui.F_M.size(head)[0] + 18, y + 4, C_GREEN)
-            ui.text(screen, ui.F_XS, desc, 160, y + 34, (190, 180, 210))
-            y += 80
-        ui.text(screen, ui.F_XS, 'P: pausa   ·   B: brillo de la cueva   ·   Esc: volver al menú', W // 2, H - 38, (150, 135, 180), True)
-        ui.text(screen, ui.F_S, 'Pulsa Esc o Enter para volver', W // 2, H - 60, (255, 255, 255), True)
+            icon(screen, kind, 100, y + 22, self.t)
+            ui.text(screen, ui.F_S, head, 160, y, (240, 232, 255))
+            ui.text(screen, ui.F_XS, keys, 160 + ui.F_S.size(head)[0] + 16, y + 3, C_GREEN)
+            ui.text(screen, ui.F_XS, desc, 160, y + 26, (190, 180, 210))
+            y += 66
+        ui.text(screen, ui.F_XS, 'P / Esc: pausa   ·   B: brillo de la cueva   ·   Pulsa Esc o Enter para volver', W // 2, H - 36, (200, 190, 225), True)

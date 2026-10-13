@@ -24,6 +24,10 @@ class Game:
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         ui.init_fonts()
+        self.screen.fill((4, 3, 10))                 # sintetizar los sonidos tarda un par de segundos
+        ui.text(self.screen, ui.F_M, 'BATling Rescue', W // 2, H // 2 - 14, (210, 190, 255), True)
+        ui.text(self.screen, ui.F_XS, 'Cargando...', W // 2, H // 2 + 20, (150, 135, 180), True)
+        pygame.display.flip()
         self.sounds = SoundManager()
         self.backdrop = ui.Backdrop()
         self.running = True
@@ -31,22 +35,63 @@ class Game:
         self.pending = None
         self.fade, self.fade_dir = 255.0, -1        # 255 = negro total
         self.veil = pygame.Surface((W, H))
-        self.scene = self._make('title')
+        self.progress = self.new_progress()
+        self.scene = self._make(('title', {}))
         self.scene.enter()
 
-    def _make(self, name):
+    # ------------------------------------------------------------ historia
+    @staticmethod
+    def new_progress(step=0):
+        return dict(step=step, decided=False, retries=0, play_time=0.0, rescued=0)
+
+    def start_story(self):
+        """Historia completa desde el prólogo."""
+        self.progress = self.new_progress(0)
+        self._goto_step()
+
+    def start_level(self, level):
+        """Empieza directo en un nivel (desde el menú de capítulos), con su cinemática de entrada."""
+        from story import flow_index, rescued_before
+        self.progress = self.new_progress(flow_index('play', level) - 1)
+        self.progress['decided'] = level >= 3            # en el acto III Mullo ya usa el grito a propósito
+        self.progress['rescued'] = rescued_before(level)
+        self._goto_step()
+
+    def retry_level(self, level):
+        self.goto('play', level=level)
+
+    def advance(self):
+        if self.pending is not None:                 # ya hay una transición en curso
+            return
+        self.progress['step'] += 1
+        self._goto_step()
+
+    def _goto_step(self):
+        from story import FLOW
+        kind, key = FLOW[min(self.progress['step'], len(FLOW) - 1)]
+        if kind == 'cut':
+            self.goto('cut', key=key)
+        elif kind == 'play':
+            self.goto('play', level=key)
+        else:
+            self.goto('end')
+
+    def _make(self, pending):
+        name, kw = pending
         from scenes.title import TitleScene
         from scenes.instructions import InstructionsScene
         from scenes.play import PlayScene
+        from scenes.cutscene import CutsceneScene, EndScene
         if name == 'play':                           # generar la cueva tarda un instante
             self.screen.fill((0, 0, 0))
-            ui.text(self.screen, ui.F_M, 'Generando la cueva...', W // 2, H // 2, (170, 150, 210), True)
+            ui.text(self.screen, ui.F_M, 'La cueva cambia cada noche...', W // 2, H // 2, (170, 150, 210), True)
             pygame.display.flip()
-        return {'title': TitleScene, 'instructions': InstructionsScene, 'play': PlayScene}[name](self)
+        return {'title': TitleScene, 'instructions': InstructionsScene, 'play': PlayScene,
+                'cut': CutsceneScene, 'end': EndScene}[name](self, **kw)
 
-    def goto(self, name):
+    def goto(self, name, **kw):
         if self.pending is None:
-            self.pending, self.fade_dir = name, 1
+            self.pending, self.fade_dir = (name, kw), 1
 
     def _fade_step(self, dt):
         if self.fade_dir == 0:

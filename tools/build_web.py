@@ -30,12 +30,19 @@ def stage():
     for fn in os.listdir(os.path.join(ROOT, "scenes")):
         if fn.endswith(".py"):
             shutil.copy(os.path.join(ROOT, "scenes", fn), os.path.join(APP, "scenes"))
+    scenes_img = os.path.join(ROOT, "assets", "escenas")              # imágenes opcionales de las cinemáticas
+    if os.path.isdir(scenes_img):
+        dest = os.path.join(APP, "assets", "escenas")
+        os.makedirs(dest, exist_ok=True)
+        for fn in os.listdir(scenes_img):
+            if fn.lower().endswith((".png", ".jpg", ".jpeg")):
+                shutil.copy(os.path.join(scenes_img, fn), dest)
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "export_sounds.py"), os.path.join(APP, "sounds")],
                    check=True)
 
 
 def build(make_zip):
-    cmd = [sys.executable, "-m", "pygbag", "--build", "--no_opt", "--title", "Batling Rescue",
+    cmd = [sys.executable, "-m", "pygbag", "--build", "--no_opt", "--title", "BATling Rescue",
            "--app_name", "batlingrescue"]
     if make_zip:
         cmd.append("--archive")

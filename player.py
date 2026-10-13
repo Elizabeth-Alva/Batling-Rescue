@@ -1,11 +1,10 @@
-"""El murciélago: movimiento fluido, colisión con la cueva, sonar y escudo."""
+"""Mullo, la murciélaga: movimiento fluido, colisión con la cueva, impulso y escudo."""
 import math
 
 from settings import (SHIELD_T, BAT_SPEED, BAT_ACCEL, BAT_FRICTION, BAT_TURN_BOOST, BAT_CARRY_MULT, KNOCK_DECAY,
-                      PHYS_DT, BAT_RADIUS, BAT_HP, NEST, SONAR_SPEED, SONAR_MAX_R, SONAR_TOTAL_T,
-                      SONAR_WAVE_T, SONAR_FADE_T, SONAR_EXPOSE_T, SONAR_NOISE_R, C_SONAR,
-                      IMPACT_MIN_SPEED, IMPACT_CD)
-from events import ImpactEvent, NoiseEvent, SonarEvent
+                      PHYS_DT, BAT_RADIUS, BAT_HP, NEST, IMPACT_MIN_SPEED, IMPACT_CD, WATER_MULT,
+                      DASH_SPEED, DASH_T, DASH_CD)
+from events import ImpactEvent
 
 
 class Bat:
@@ -20,11 +19,9 @@ class Bat:
         self.trail, self.trail_t = [], 0.0
         self.shield_t = 0.0            # segundos de escudo restantes
         self.shield_cd = 0.0
-        # sonar
-        self.sonar_cd = 0.0
-        self.sonar_t = None            # segundos desde que se emitió (None = inactivo)
-        self.sonar_origin = (0, 0)
-        self.exposed = 0.0             # segundos restantes en que los enemigos cercanos te ven
+        self.dash_t = self.dash_cd = 0.0
+        self.dash_dir = (1.0, 0.0)
+        self.over_water = False
 
     # --------------------------------------------------------------- movimiento
     def knockback(self, dx, dy, force):
@@ -34,7 +31,8 @@ class Bat:
 
     def update(self, dt, mv, aim_world, cave, bus):
         n = math.hypot(*mv)
-        sp = BAT_SPEED * (BAT_CARRY_MULT if self.carry else 1)
+        self.over_water = bool(getattr(cave, 'is_water', None) and cave.is_water(self.x, self.y))
+        sp = BAT_SPEED * (BAT_CARRY_MULT if self.carry else 1) * (WATER_MULT if self.over_water else 1)
         dx, dy = (mv[0] / n, mv[1] / n) if n else (0.0, 0.0)
         if self.wall_t > 0 and n:                 # contra una pared: se desliza por ella a velocidad completa
             dot = dx * self.wall_n[0] + dy * self.wall_n[1]
@@ -51,7 +49,13 @@ class Bat:
         h = dt / steps
         decay = math.exp(-KNOCK_DECAY * h)
         for _ in range(steps):
-            self._accelerate(dx, dy, sp, h)
+            if self.dash_t > 0:                    # impulso: velocidad fija en la dirección elegida
+                self.dash_t -= h
+                self.vx, self.vy = self.dash_dir[0] * DASH_SPEED, self.dash_dir[1] * DASH_SPEED
+                if self.dash_t <= 0:               # al terminar conserva la velocidad normal
+                    self.vx, self.vy = self.dash_dir[0] * sp, self.dash_dir[1] * sp
+            else:
+                self._accelerate(dx, dy, sp, h)
             self.x += (self.vx + self.kx) * h
             self.y += (self.vy + self.ky) * h
             hit, nx, ny = cave.resolve(self, BAT_RADIUS)
@@ -65,7 +69,7 @@ class Bat:
         target = max(-1, min(1, (self.vx + self.kx) / BAT_SPEED)) * .28          # inclinación al girar
         self.tilt += (target - self.tilt) * min(1, dt * 10)
         self.trail_t -= dt
-        if speed > 150 and self.trail_t <= 0:
+        if speed > 150 and self.trail_t <= 0 or self.dash_t > 0:
             self.trail.append([self.x, self.y, .35])
             self.trail_t = .035
         for p in self.trail:
@@ -74,14 +78,9 @@ class Bat:
         self.wall_t = max(0, self.wall_t - dt)
         self.inv = max(0, self.inv - dt)
         self.impact_cd = max(0, self.impact_cd - dt)
-        self.sonar_cd = max(0, self.sonar_cd - dt)
+        self.dash_cd = max(0, self.dash_cd - dt)
         self.shield_t = max(0, self.shield_t - dt)
         self.shield_cd = max(0, self.shield_cd - dt)
-        self.exposed = max(0, self.exposed - dt)
-        if self.sonar_t is not None:
-            self.sonar_t += dt
-            if self.sonar_t >= SONAR_TOTAL_T:
-                self.sonar_t = None
 
     def _accelerate(self, dx, dy, sp, h):
         if dx or dy:                               # acelera hacia la velocidad deseada
@@ -125,28 +124,21 @@ class Bat:
                 bus.emit(ImpactEvent(self.x, self.y, speed))
         self.wall_n, self.wall_t = (nx, ny), .1
 
-    # --------------------------------------------------------------- sonar
-    def try_sonar(self, cd, bus):
-        if self.sonar_cd > 0 or self.sonar_t is not None:
+    # --------------------------------------------------------------- impulso
+    def try_dash(self, mv, aim_world):
+        """Impulso en la dirección de vuelo (o hacia el ratón si no te mueves)."""
+        if self.dash_cd > 0:
             return False
-        self.sonar_t, self.sonar_origin = 0.0, (self.x, self.y)
-        self.sonar_cd, self.exposed = cd, SONAR_EXPOSE_T
-        bus.emit(SonarEvent(self.x, self.y))
-        bus.emit(NoiseEvent(self.x, self.y, SONAR_NOISE_R, C_SONAR, 'sonar'))
+        dx, dy = mv
+        if not (dx or dy):
+            dx, dy = aim_world[0] - self.x, aim_world[1] - self.y
+        n = math.hypot(dx, dy)
+        if n < 1e-6:
+            return False
+        self.dash_dir = (dx / n, dy / n)
+        self.dash_t, self.dash_cd = DASH_T, DASH_CD
+        self.kx = self.ky = 0.0
         return True
-
-    @property
-    def sonar_radius(self):
-        return None if self.sonar_t is None else min(SONAR_MAX_R, self.sonar_t * SONAR_SPEED)
-
-    @property
-    def sonar_strength(self):
-        """1 mientras la onda se expande y luego decae a 0 durante el desvanecimiento."""
-        if self.sonar_t is None:
-            return 0.0
-        if self.sonar_t <= SONAR_WAVE_T:
-            return 1.0
-        return max(0.0, 1 - (self.sonar_t - SONAR_WAVE_T) / SONAR_FADE_T)
 
     # --------------------------------------------------------------- escudo
     def try_shield(self, cd):

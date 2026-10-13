@@ -1,33 +1,65 @@
-BATLING RESCUE: RESCATE EN LA CUEVA (Pygame)
+BATLING RESCUE (Pygame)
+Una madre. Diez crías. Una sola noche.  ¿El amor puede más que el miedo?
 
 COMO JUGAR
   Windows: doble clic en JUGAR.bat (instala pygame la primera vez y abre el juego).
   Manual:  pip install pygame   y luego   python main.py
   Requiere Python 3.8 o superior (python.org; marca "Add Python to PATH" al instalar).
 
+MENU
+  Jugar .............. prólogo, 3 actos con sus cinemáticas y el final.
+
 CONTROLES
-  WASD / Flechas ... volar            Espacio / clic izq. grito sonico
-  Q o clic central . SONAR            E / Shift / clic der. ESCUDO (5 s)
-  P ................ pausa            B ................ brillo (Oscuro/Normal/Claro)
-  Esc .............. volver al menu
-  R ................ reiniciar (al terminar)
+  WASD / Flechas ... volar                 Espacio / clic izq. ... GRITO SÓNICO
+  Shift ............ IMPULSO               E / clic der. ......... ESCUDO (5 s)
+  M ................ ampliar el mapa       P / Esc ............... pausa
+  B ................ brillo                R / Enter ............. reintentar el nivel
+  En las cinemáticas: la historia espera; Espacio/Enter continúa, Esc salta la escena.
 
-OBJETIVO
-  Lleva las 10 crias al nido (circulo marron). Sus chillidos atraen a las aranas.
-  Los enemigos aparecen continuamente por toda la cueva. Cada cria rescatada sube el
-  peligro: mas rapidos, mas numerosos y, a partir de la 3.a cria, depredadores enormes
-  (escorpion) y, mas tarde, el gigante de la cueva.
+HISTORIA (3 actos = 3 niveles, de la medianoche al amanecer)
+  Prólogo: año de sequía; la colonia se irá al amanecer. Mullo sale a cazar y deja a sus 10 crías.
+  Acto I  · Las Galerías de los Hongos (3 crías, arañas). Rastros de piedritas, garras y guano;
+           la cortina de telarañas se abre gritando; el susurro de madre (elemento plantado).
+  Acto II · El Lago Negro (4 crías, arañas y escarabajos). Agua con niebla e islotes: los bichos no
+           cruzan el agua, pero a Mullo el aire húmedo la frena. La Sala del Eco (punto medio): desde
+           ahí el grito se recarga más rápido. Con una vida: el punto más bajo.
+  Acto III· La Mina Vieja (3 crías, arañas, escarabajos y cazadores). Vigas, rieles, vagonetas y una
+           corriente de aire que apunta a la salida. Bolillo y Pozolito están en una vagoneta junto al Gran
+           Ciempiés, que no se puede vencer: tómalas y huye hacia la luz del amanecer.
+  Final:   la voz verdadera, la colonia parte completa.
+  Durante el juego no hay textos ni pausas: los momentos de la historia (susurro, telarañas, Sala del Eco,
+  punto más bajo, el gigante) se oyen y se ven en tiempo real, y las cinemáticas de inicio y fin de cada
+  acto los cuentan con palabras.
 
-MECANICAS
-  SONAR: una onda ilumina toda la cueva y revela el minimapa, pero mientras dura
-         los enemigos cercanos te ven por completo.
-  ESCUDO: 5 segundos sin recibir dano; repele y aturde a quien te toque. Se recarga (15 s).
-  CHOQUES: chocar a velocidad contra las paredes hace ruido y atrae a las criaturas.
-  Las flechas rosadas del borde senalan a las crias que acaban de chillar;
-  la flecha verde senala el nido cuando llevas una cria.
+MECÁNICAS
+  GRITO: aturde y daña a los enemigos cercanos, rompe telarañas y MARCA A LAS CRÍAS EN EL MINIMAPA.
+         También hace ruido y tarda en recargarse.
+  IMPULSO: empujón veloz en la dirección de vuelo (o hacia el ratón). Se recarga.
+  ESCUDO: 5 segundos sin daño; repele a quien te toque. Se recarga (15 s).
+  MINIMAPA: siempre visible (abajo a la derecha). M lo amplía.
+  RUIDO: los chillidos de las crías y los choques contra la roca atraen a los enemigos.
+  LATIDO: se oye cuando algo te persigue cerca.
+  AVISO: dos notas agudas suenan cuando un enemigo te ve.
+  AMBIENTE: cada escenario tiene su propio sonido de fondo (hongos, lago, mina).
+  ENEMIGO VENCIDO: se marea (estrellitas) y sale corriendo entre polvito. Nada de sangre (E10+).
+  SALAMANDRAS: en el Lago Negro nadan salamandras de cueva; si ven a un murciélago se espantan y se sumergen.
+  GOTERAS: de las estalactitas caen gotas que se oyen y salpican.
+  NIDO: las crías rescatadas descansan en el punto de entrega.
+  SALA SECRETA: cada nivel esconde una sala (cambia de lugar en cada partida) tras raíces, una cortina
+         de agua o tablas sueltas. Ahí ningún enemigo entra y hay MEDIO CORAZÓN para recoger.
+         Acto I: sala de telarañas · Acto II: gruta de hierro natural · Acto III: herramientas de mineros.
+  HUIDA: el Gran Ciempiés despierta con una animación y suena música de persecución.
+  RELOJ: cada acto tiene su tiempo; si se acaba, la noche termina y hay que reintentar.
+  PUNTO DE ENTREGA: el brillo dorado arriba a la izquierda; ahí nadie entra y recuperas una vida.
+
+IMÁGENES CON IA (opcional)
+  Las cinemáticas están dibujadas por código. Si guardas una imagen en assets/escenas/<escena>.png
+  el juego la usa en su lugar. Nombres y prompts listos en assets/escenas/PROMPTS_IA.md
+  Material promocional: python tools/make_cover.py  -> assets/promo/ (portada, banner itch.io, icono)
 
 CODIGO
-  main.py (entrada) · game.py (bucle y escenas) · scenes/ (titulo, instrucciones, juego)
+  main.py (entrada) · game.py (bucle, escenas e historia) · story.py (textos, niveles, crías)
+  scenes/ (portada, instrucciones, juego, cinemáticas, pantallas) · art.py (ilustraciones por código)
   player.py · enemies.py · pups.py · map.py · camera.py · lighting.py · events.py
   difficulty.py · sound.py · ui.py · settings.py
   Pruebas: python -m unittest discover -s tests
@@ -35,11 +67,7 @@ CODIGO
 VERSION WEB (navegador, GitHub Pages)
   Se compila con pygbag (WebAssembly). Requiere:  pip install -r requirements-web.txt
   Compilar:    python tools/build_web.py          (deja el sitio en web_build/site/)
-               python tools/build_web.py --zip    (ademas genera web_build/batlingrescue.zip para itch.io)
+               python tools/build_web.py --zip    (además genera web_build/batlingrescue.zip para itch.io)
   Probar local: python -m pygbag web_build/batlingrescue   y abrir http://localhost:8000
-                (hace falta el servidor de pygbag; "http.server" no sirve el runtime)
   Publicar: en GitHub -> Settings -> Pages -> Source: "GitHub Actions". Cada push a main
-            ejecuta .github/workflows/pages.yml (tests + compilacion + despliegue).
-  En el navegador: hay que hacer un clic para empezar (activa el audio), no hay opcion "Salir",
-  los sonidos se precalculan como .ogg y la consola del navegador (F12) muestra "[perf] N fps".
-  Ya no hace falta que el juego de escritorio cambie: python main.py sigue funcionando igual.
+            ejecuta .github/workflows/pages.yml (tests + compilación + despliegue).

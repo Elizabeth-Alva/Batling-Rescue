@@ -1,4 +1,4 @@
-"""Iluminación: penumbra azulada legible, luz propia amplia, memoria de lo recorrido, balizas y sonar.
+"""Iluminación: penumbra con el color de cada escenario, luz propia, memoria de lo recorrido, balizas y ecolocación.
 
 Todo el cálculo de luz se hace en un mapa de 1/2 de resolución (SW x SH) y se amplía una sola vez:
 la luz es suave, así que no se nota, y evita varias mezclas de pantalla completa por frame
@@ -8,14 +8,24 @@ import math
 
 import pygame
 
-from settings import (W, H, TILE, NEST, SONAR_MAX_R, SHIELD_R, C_SONAR, BRIGHTNESS_LEVELS, AMBIENT_RGB)
+from settings import (W, H, TILE, NEST, SHIELD_R, BRIGHTNESS_LEVELS, SCREECH_R, ECHO_FLASH_T)
 
 S = 2                                  # factor de reducción del mapa de luz
 SW, SH = W // S, H // S
 SUB = pygame.BLEND_RGBA_SUB
 ADD = pygame.BLEND_RGB_ADD
 K = (0, 0, 0)
-TINT = (30, 70, 150)                   # color de la zona revelada por el sonar
+# penumbra de cada escenario: (color, cambio de opacidad, color del brillo del punto de entrega)
+# Cada nivel está más oscuro que el anterior (se baja más y más en la cueva); para compensar, la luz de Mullo
+# se achica un poco y los objetos que brillan (cristales, hongos, algas) alumbran más y se ven de más lejos.
+AMBIENT = {
+    'fungi': ((4, 20, 22), -18, (255, 170, 90)),      # verde azulado: luz tenue y segura
+    'lake': ((3, 5, 22), 36, (150, 170, 255)),         # índigo casi negro
+    'mine': ((12, 7, 3), 56, (255, 160, 80)),          # marrón y ámbar oscuro, casi sin luz
+}
+BAT_SCALE = {'fungi': 1.0, 'lake': .9, 'mine': .82}      # radio de la luz propia de Mullo
+OBJ_SCALE = {'fungi': 1.0, 'lake': 1.2, 'mine': 1.5}     # cuánto alumbran los objetos que brillan
+FUNGUS_GLOW = {'fungi': (70, 230, 170), 'lake': (70, 210, 160), 'mine': (255, 170, 70)}   # en la mina: madera podrida que brilla
 
 
 def radial(r, peak=255, exp=1.3, rgb=(255, 255, 255), step=2):
@@ -60,20 +70,28 @@ def ring(c, x, y, r, col, a, width=2):
 
 
 class Lighting:
-    def __init__(self, crystals, fungi=()):
-        self.crystals, self.fungi = crystals, list(fungi)
+    def __init__(self, crystals, fungi=(), theme='fungi', algae=()):
+        self.crystals, self.fungi, self.algae = crystals, list(fungi), list(algae)
+        self.amb_rgb, self.amb_off, nest_col = AMBIENT[theme]
+        self.theme = theme
         self.small = pygame.Surface((SW, SH), pygame.SRCALPHA)
         self.up = pygame.Surface((W, H), pygame.SRCALPHA)
         # luces que se RESTAN de la oscuridad (solo opacidad)
-        self.bat_lights = {lv[2]: radial(lv[2] // S, 255, .8, K, 1) for lv in BRIGHTNESS_LEVELS}
+        bs, o = BAT_SCALE[theme], OBJ_SCALE[theme]
+        self.bat_lights = {lv[2]: radial(int(lv[2] * bs) // S, 255, .8, K, 1) for lv in BRIGHTNESS_LEVELS}
         self.L_NEST = radial(210 // S, 255, 1.0, K, 1)
         self.L_PUP = faded(radial(60 // S, 255, 1.0, K, 1), 150)
-        self.L_CRY = faded(radial(70 // S, 255, 1.0, K, 1), 110)
-        self.L_FUN = faded(radial(36 // S, 255, 1.0, K, 1), 110)
+        self.L_CRY = faded(radial(int(70 * o) // S, 255, 1.0, K, 1), min(255, int(110 * o)))
+        self.L_FUN = faded(radial(int(36 * o) // S, 255, 1.0, K, 1), min(255, int(110 * o)))
         # brillos de color que se SUMAN (balizas visibles de lejos)
-        self.glow = {col: glow_rgb(70 // S, col, 1.0) for col in {c[2] for c in crystals}}
-        self.fun_glow = glow_rgb(36 // S, (70, 230, 170), .9)
-        self.nest_glows = [glow_rgb(210 // S, (255, 170, 90), .45 + .2 * k / 5) for k in range(6)]
+        self.glow = {col: glow_rgb(int(70 * o) // S, col, 1.0) for col in {c[2] for c in crystals}}
+        self.fun_glow = glow_rgb(int(36 * o) // S, FUNGUS_GLOW[theme], .9)
+        self.L_ALG = faded(radial(int(26 * o) // S, 255, 1.0, K, 1), min(255, int(70 * o)))
+        self.alg_glow = glow_rgb(int(26 * o) // S, (60, 200, 120), .55)
+        self.nest_glows = [glow_rgb(210 // S, nest_col, .45 + .2 * k / 5) for k in range(6)]
+        self.dawn_glows = [glow_rgb(300 // S, (255, 170, 90), .55 + .25 * k / 5) for k in range(6)]
+        self.L_DAWN = radial(300 // S, 255, 1.0, K, 1)
+        self.L_ECHO = {}
         self.aura = glow_rgb(70 // S, (150, 160, 255), .35)
         self.vig = make_vignette()
         self._mem_key, self._mem_img = None, None          # imagen ampliada de la memoria (se recalcula solo si cambia)
@@ -96,17 +114,21 @@ class Lighting:
         """Oscurece el lienzo c y añade los brillos de color. g es la escena de juego."""
         cam, b = g.camera, g.bat
         _, ambient, radius = BRIGHTNESS_LEVELS[g.game.brightness]
+        ambient = max(120, min(252, ambient + self.amb_off))
         d = self.small
-        d.fill((*AMBIENT_RGB, ambient))
-        k, rad = b.sonar_strength, b.sonar_radius
-        if k > 0 and rad:                      # el sonar aclara y tiñe de azul todo lo que alcanza la onda
-            ox, oy = cam.apply(*b.sonar_origin)
-            for dr, frac in ((0, .30), (40, .55), (90, .78), (150, .9)):          # borde suave de la onda
-                if rad - dr > 0:
-                    a = int(ambient * (1 - frac * k))
-                    mix = frac * k
-                    col = tuple(int(AMBIENT_RGB[i] * (1 - mix) + TINT[i] * mix) for i in range(3))
-                    pygame.draw.circle(d, (*col, a), (int(ox / S), int(oy / S)), int((rad - dr) / S))
+        d.fill((*self.amb_rgb, ambient))
+        if g.echo_t > 0:                       # ecolocación: el grito "dibuja" un momento lo que rodea a Mullo
+            k = g.echo_t / ECHO_FLASH_T
+            r = int((SCREECH_R * 2.4 * (1 - k * .55)) / S)
+            ox, oy = cam.apply(*g.echo_origin)
+            key = (r // 4, int(k * 6))
+            surf = self.L_ECHO.get(key)
+            if surf is None:
+                if len(self.L_ECHO) > 60:
+                    self.L_ECHO.clear()
+                surf = self.L_ECHO[key] = faded(radial(max(4, key[0] * 4), 255, .5, K, 2), int(200 * min(1, k * 1.3)))
+            hw = surf.get_width() // 2
+            d.blit(surf, (round(ox / S) - hw, round(oy / S) - hw), special_flags=SUB)
         self._memory(d, cam, g.cave)
         step = round(3 * math.sin(t * 9) * math.sin(t * 3.1))      # parpadeo suave en 7 pasos (-3..3)
         lb = self._flick.get((radius, step))
@@ -118,17 +140,20 @@ class Lighting:
         hw = lb.get_width() // 2
         d.blit(lb, (round(bx / S) - hw, round(by / S) - hw), special_flags=SUB)
         nx, ny = cam.apply(*NEST)
-        near_nest = cam.visible(*NEST, 260)
+        dawn = self.theme == 'mine'
+        near_nest = cam.visible(*NEST, 340 if dawn else 260)
         if near_nest:
-            hw = self.L_NEST.get_width() // 2
-            d.blit(self.L_NEST, (round(nx / S) - hw, round(ny / S) - hw), special_flags=SUB)
+            ln = self.L_DAWN if dawn else self.L_NEST
+            hw = ln.get_width() // 2
+            d.blit(ln, (round(nx / S) - hw, round(ny / S) - hw), special_flags=SUB)
         for p in g.pups:
             if p is not b.carry and cam.visible(p.x, p.y, 80):
                 px, py = cam.apply(p.x, p.y)
                 hw = self.L_PUP.get_width() // 2
                 d.blit(self.L_PUP, (round(px / S) - hw, round(py / S) - hw), special_flags=SUB)
-        vis_c = [(x, y, col) for x, y, col in self.crystals if cam.visible(x, y, 80)]
-        vis_f = [(x, y) for x, y in self.fungi if cam.visible(x, y, 50)]
+        vis_c = [(x, y, col) for x, y, col in self.crystals if cam.visible(x, y, 120)]
+        vis_f = [(x, y) for x, y in self.fungi if cam.visible(x, y, 80)]
+        vis_a = [(x, y) for x, y in self.algae if cam.visible(x, y, 40)]
         for x, y, col in vis_c:
             sx, sy = cam.apply(x, y)
             hw = self.L_CRY.get_width() // 2
@@ -137,11 +162,15 @@ class Lighting:
             sx, sy = cam.apply(x, y)
             hw = self.L_FUN.get_width() // 2
             d.blit(self.L_FUN, (round(sx / S) - hw, round(sy / S) - hw), special_flags=SUB)
+        for x, y in vis_a:
+            sx, sy = cam.apply(x, y)
+            hw = self.L_ALG.get_width() // 2
+            d.blit(self.L_ALG, (round(sx / S) - hw, round(sy / S) - hw), special_flags=SUB)
         # brillos tintados: se suman al color de la capa de oscuridad, así se ven de lejos
         hw = self.aura.get_width() // 2
         d.blit(self.aura, (round(bx / S) - hw, round(by / S) - hw), special_flags=ADD)
         if near_nest:
-            ng = self.nest_glows[int(2.5 + 2.5 * math.sin(t * 2.2))]
+            ng = (self.dawn_glows if dawn else self.nest_glows)[int(2.5 + 2.5 * math.sin(t * 2.2))]
             hw = ng.get_width() // 2
             d.blit(ng, (round(nx / S) - hw, round(ny / S) - hw), special_flags=ADD)
         for x, y, col in vis_c:
@@ -153,6 +182,20 @@ class Lighting:
             sx, sy = cam.apply(x, y)
             hw = self.fun_glow.get_width() // 2
             d.blit(self.fun_glow, (round(sx / S) - hw, round(sy / S) - hw), special_flags=ADD)
+        for x, y in vis_a:
+            sx, sy = cam.apply(x, y)
+            hw = self.alg_glow.get_width() // 2
+            d.blit(self.alg_glow, (round(sx / S) - hw, round(sy / S) - hw), special_flags=ADD)
+        sky = getattr(g.cave, 'skylight', None)                    # luz que entra por la grieta del techo
+        if sky and cam.visible(*sky, 260):
+            if not hasattr(self, '_sky'):
+                col = {'fungi': (70, 100, 220), 'lake': (150, 90, 230), 'mine': (255, 150, 70)}[self.theme]
+                self._sky = (radial(170 // S, 230, 1.3, K, 1), glow_rgb(170 // S, col, .55))
+            sub, add = self._sky
+            sx, sy = cam.apply(sky[0], sky[1] + 110)
+            hw = sub.get_width() // 2
+            d.blit(sub, (round(sx / S) - hw, round(sy / S) - hw), special_flags=SUB)
+            d.blit(add, (round(sx / S) - hw, round(sy / S) - hw), special_flags=ADD)
         d.blit(self.vig, (0, 0))                                   # viñeta
         pygame.transform.scale(d, (W, H), self.up)                 # una sola ampliación
         c.blit(self.up, (0, 0))
@@ -177,11 +220,3 @@ class Lighting:
             sx, sy = g.camera.apply(x, y)
             f = life / .35
             pygame.draw.circle(c, (int(120 * f), int(105 * f), int(190 * f)), (int(sx), int(sy)), 2 + int(3 * f))
-
-    def draw_sonar_ring(self, c, g):
-        b = g.bat
-        rad = b.sonar_radius
-        if rad is not None and b.sonar_t is not None and rad < SONAR_MAX_R:
-            ox, oy = g.camera.apply(*b.sonar_origin)
-            ring(c, ox, oy, rad, C_SONAR, .75, 5)
-            ring(c, ox, oy, max(1, rad - 14), C_SONAR, .35, 3)

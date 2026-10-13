@@ -8,7 +8,7 @@ class NoiseEvent:
     y: float
     radius: float
     color: tuple = (255, 255, 255)
-    source: str = ''            # 'pup' | 'screech' | 'sonar' | 'impact'
+    source: str = ''            # 'pup' | 'screech' | 'impact'
 
 
 @dataclass
@@ -16,12 +16,6 @@ class ImpactEvent:
     x: float
     y: float
     speed: float
-
-
-@dataclass
-class SonarEvent:
-    x: float
-    y: float
 
 
 class EventBus:
