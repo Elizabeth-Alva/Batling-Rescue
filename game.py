@@ -116,9 +116,36 @@ class Game:
         elif self.fade_dir < 0 and self.fade <= 0:
             self.fade_dir = 0
 
+    def _portrait(self, now):
+        """¿El navegador está en vertical? (se revisa cada segundo)"""
+        if now - getattr(self, '_orient_t', -9) > 1.0:
+            self._orient_t = now
+            try:
+                import platform as _pf
+                self._is_portrait = int(_pf.window.innerHeight) > int(_pf.window.innerWidth)
+            except Exception:
+                self._is_portrait = False
+        return self._is_portrait
+
+    def _draw_rotate_hint(self):
+        s = self.screen
+        s.fill((6, 4, 14))
+        t = time.perf_counter()
+        cx, cy = W // 2, H // 2 - 40
+        a = min(1.0, (t % 2.4) / 1.2) * 90                     # un teléfono que gira
+        ph = pygame.Surface((90, 150), pygame.SRCALPHA)
+        pygame.draw.rect(ph, (200, 160, 255), ph.get_rect(), 6, border_radius=14)
+        pygame.draw.circle(ph, (200, 160, 255), (45, 136), 5)
+        rot = pygame.transform.rotate(ph, -a)
+        s.blit(rot, rot.get_rect(center=(cx, cy)))
+        ui.text(s, ui.F_L, 'Gira tu teléfono', cx, cy + 140, (240, 232, 255), True)
+        ui.text(s, ui.F_M, 'BATling Rescue se juega en horizontal', cx, cy + 200, (200, 190, 230), True)
+
     def _finger(self, ev, now):
         """Toques: el joystick y los botones van a la escena de juego; en menús y cinemáticas un toque es un clic."""
         name = self.touch.handle(ev)
+        if IS_WEB and ev.type == pygame.FINGERUP:            # al primer toque: pantalla completa y horizontal
+            self.touch.go_fullscreen()
         if self.pending is not None:
             return
         if hasattr(self.scene, 'on_touch'):
@@ -156,6 +183,8 @@ class Game:
             if self.fade > 0:
                 self.veil.set_alpha(int(self.fade))
                 self.screen.blit(self.veil, (0, 0))
+            if IS_WEB and self._portrait(now):                # teléfono vertical: pide girarlo
+                self._draw_rotate_hint()
             pygame.display.flip()
             await asyncio.sleep(0)               # cede el control al navegador (pygbag)
             if IS_WEB:                            # rendimiento visible en la consola del navegador

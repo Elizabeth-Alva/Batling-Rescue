@@ -627,6 +627,7 @@ class PlayScene(Scene):
 
     def _enemies(self, dt):
         b = self.bat
+        self.cave.path_budget = 3                             # máximo de rutas nuevas por cuadro
         dmin = 1e9
         for e in self.enemies:
             e.update(dt, self)

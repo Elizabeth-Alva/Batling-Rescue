@@ -153,8 +153,10 @@ class Enemy:
             wp, self.path = goal, []
         else:
             self.repath -= dt
-            if self.repath <= 0 or not self.path:
-                self.repath = .6 + random.random() * .2
+            budget = getattr(cave, 'path_budget', 99)          # pocas búsquedas por cuadro (va más fluido)
+            if (self.repath <= 0 or not self.path) and budget > 0:
+                cave.path_budget = budget - 1
+                self.repath = .8 + random.random() * .4
                 self.path = cave.path(pos, goal) or []
             while len(self.path) > 1 and (math.dist(pos, self.path[0]) < 14 or cave.los(pos, self.path[1])):
                 self.path.pop(0)

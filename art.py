@@ -456,11 +456,15 @@ def _sky(stops_a, stops_b, k, cache, key):
     """Cielo que cambia de color: mezcla dos degradados precalculados."""
     if key not in cache:
         cache[key] = (gradient(W, H, stops_a), gradient(W, H, stops_b))
-    a, b = cache[key]
-    out = a.copy()
-    b.set_alpha(int(255 * max(0, min(1, k))))
-    out.blit(b, (0, 0))
-    return out
+    step = int(40 * max(0, min(1, k)))                              # solo se recalcula cuando cambia de paso
+    last = cache.get((key, 'last'))
+    if last is None or last[0] != step:
+        a, b = cache[key]
+        out = a.copy()
+        b.set_alpha(int(255 * step / 40))
+        out.blit(b, (0, 0))
+        cache[(key, 'last')] = last = (step, out)
+    return last[1]
 
 
 def cave_mouth_frame(w, h, hole, col=(6, 5, 10), rim=None, seed=1):

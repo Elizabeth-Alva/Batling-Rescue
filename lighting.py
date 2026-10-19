@@ -153,6 +153,8 @@ class Lighting:
                 d.blit(self.L_PUP, (round(px / S) - hw, round(py / S) - hw), special_flags=SUB)
         vis_c = [(x, y, col) for x, y, col in self.crystals if cam.visible(x, y, 120)]
         vis_f = [(x, y) for x, y in self.fungi if cam.visible(x, y, 80)]
+        if len(vis_f) > 28:                                        # en pantalla basta con los más cercanos
+            vis_f = sorted(vis_f, key=lambda p: (p[0] - b.x) ** 2 + (p[1] - b.y) ** 2)[:28]
         vis_a = [(x, y) for x, y in self.algae if cam.visible(x, y, 40)]
         for x, y, col in vis_c:
             sx, sy = cam.apply(x, y)

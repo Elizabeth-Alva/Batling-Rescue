@@ -100,7 +100,9 @@ EN EL TELÉFONO (pantalla táctil)
   Los controles táctiles aparecen solos al tocar la pantalla (con teclado y ratón todo sigue igual):
   joystick a la izquierda (aparece donde pones el dedo) · GRITO, IMPULSO y ESCUDO abajo a la derecha
   (muestran su recarga) · pausa y MAPA arriba · en menús, cinemáticas y pantallas: toca para continuar.
-  Juega con el teléfono en horizontal. Se abre desde la versión web (abajo).
+  Juega con el teléfono en horizontal (si está vertical, el juego te pide girarlo). Al primer toque intenta
+  ponerse en pantalla completa. En el navegador los murciélagos se dibujan sin suavizado extra para que
+  vaya más fluido. Se abre desde la versión web (abajo).
 
 VERSION WEB (navegador, GitHub Pages)
   Se compila con pygbag (WebAssembly). Requiere:  pip install -r requirements-web.txt

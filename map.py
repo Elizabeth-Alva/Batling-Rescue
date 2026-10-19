@@ -571,31 +571,52 @@ class CaveMap:
                     return False
         return True
 
+    def _blockmap(self, walk):
+        """Mapa plano de casillas bloqueadas (se recalcula solo cuando cambia la telaraña). Acelera la búsqueda."""
+        key = (walk, len(self.web))
+        cache = getattr(self, '_bm', None)
+        if cache is None or cache[0] != key:
+            w, h = self.w, self.h
+            bm = bytearray(w * h)
+            for y in range(h):
+                row = self.g[y]
+                for x in range(w):
+                    i = y * w + x
+                    if row[x] or (x, y) in self.web or x in (0, w - 1) or y in (0, h - 1) or \
+                            (walk and (self.water[i] or self.secret_mask[i])):
+                        bm[i] = 1
+            self._bm = cache = (key, bm)
+        return cache[1]
+
     def path(self, a, b, limit=7000, walk=True):
         """BFS 4-conectado entre posiciones en píxeles -> lista de centros de tile (sin el origen)."""
-        s = (int(a[0] // T), int(a[1] // T))
-        t = (int(b[0] // T), int(b[1] // T))
-        blk = self.blocked if walk else self.solid
-        if blk(*s) or blk(*t):
+        w = self.w
+        sx, sy = int(a[0] // T), int(a[1] // T)
+        tx, ty = int(b[0] // T), int(b[1] // T)
+        if not (0 <= sx < w and 0 <= sy < self.h and 0 <= tx < w and 0 <= ty < self.h):
+            return None
+        bm = self._blockmap(walk)
+        s, t = sy * w + sx, ty * w + tx
+        if bm[s] or bm[t]:
             return None
         if s == t:
             return [b]
-        prev, dq, n = {s: None}, deque([s]), 0
+        prev = {s: -1}
+        dq, n = deque([s]), 0
         while dq and n < limit:
             cur = dq.popleft()
             n += 1
             if cur == t:
                 break
-            x, y = cur
-            for nb in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-                if nb not in prev and not blk(*nb):
+            for nb in (cur + 1, cur - 1, cur + w, cur - w):
+                if not bm[nb] and nb not in prev:
                     prev[nb] = cur
                     dq.append(nb)
         if t not in prev:
             return None
         out, cur = [], t
         while cur != s:
-            out.append((cur[0] * T + T / 2, cur[1] * T + T / 2))
+            out.append(((cur % w) * T + T / 2, (cur // w) * T + T / 2))
             cur = prev[cur]
         out.reverse()
         out[-1] = b

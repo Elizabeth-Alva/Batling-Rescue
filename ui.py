@@ -9,6 +9,7 @@ from settings import (IS_WEB, W, H, TAU, GOAL, SHIELD_T, SHIELD_CD, TILE, NEST, 
                       C_PUP, C_GOLD, MAP_W, MAP_H)
 
 F_S = F_M = F_L = F_XL = F_XS = None
+SUPERSAMPLE = 1 if IS_WEB else 2       # en el navegador (teléfono) se dibuja a tamaño normal: mucho más rápido
 KEY = (255, 0, 255)
 
 
@@ -186,10 +187,12 @@ def draw_mullo(s, x, y, flap, sc=1.0, **pose):
 
 def draw_bat_tilted(s, x, y, flap, tilt, sc=1.0, **pose):
     """Mullo inclinada (en radianes) según hacia dónde gira; pose: fold, mood, look, yawn (animaciones tiernas)."""
-    SS = 2                                                             # se dibuja al doble y se suaviza (bordes lisos)
+    SS = SUPERSAMPLE                                                   # al doble y suavizado (bordes lisos); 1 en el navegador
+    if SS == 1 and abs(tilt) < .02:
+        return draw_mullo(s, x, y, flap, sc, **pose)
     big = pygame.Surface((130 * SS, 100 * SS), pygame.SRCALPHA)
     draw_mullo(big, 65 * SS, 50 * SS, flap, sc * SS, **pose)
-    tmp = pygame.transform.smoothscale(big, (130, 100))
+    tmp = pygame.transform.smoothscale(big, (130, 100)) if SS > 1 else big
     if abs(tilt) < .02:
         s.blit(tmp, (int(x) - 65, int(y) - 50))
         return
@@ -379,12 +382,14 @@ def draw_pup(s, x, y, flap, lean=0.0, sc=.55, name=None, t=0.0, cry=False, scare
         if q < .8:
             y -= abs(math.sin(q / .8 * math.pi * 2)) * 4
             lean += math.sin(q / .8 * math.pi * 4) * .18
-    SS = 2                                                             # al doble y suavizado: bordes lisos
+    SS = SUPERSAMPLE                                                   # al doble y suavizado (en el navegador no: va más fluido)
+    if SS == 1 and abs(lean) < .03:
+        return _pup_body(s, x, y, flap, sc, lk, t, cry, scared)
     bw, bh = int(118 * sc) + 16, int(96 * sc) + 16
     cx, cy = bw // 2, int(bh * .56)
     big = pygame.Surface((bw * SS, bh * SS), pygame.SRCALPHA)
     _pup_body(big, cx * SS, cy * SS, flap, sc * SS, lk, t, cry, scared)
-    tmp = pygame.transform.smoothscale(big, (bw, bh))
+    tmp = pygame.transform.smoothscale(big, (bw, bh)) if SS > 1 else big
     if abs(lean) < .03:
         s.blit(tmp, (int(x) - cx, int(y) - cy))
         return

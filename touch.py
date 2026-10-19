@@ -77,38 +77,67 @@ class TouchControls:
                 del self.pressed[k]
 
     # ------------------------------------------------------------ dibujo
+    def _disc(self, r, fill, ring=None, width=3):
+        """Círculo semitransparente ya dibujado (se guarda: dibujar en el teléfono cuesta)."""
+        key = (r, fill, ring, width)
+        cache = self.__dict__.setdefault('_discs', {})
+        img = cache.get(key)
+        if img is None:
+            img = cache[key] = pygame.Surface((2 * r + 2, 2 * r + 2), pygame.SRCALPHA)
+            pygame.draw.circle(img, fill, (r + 1, r + 1), r)
+            if ring:
+                pygame.draw.circle(img, ring, (r + 1, r + 1), r, width)
+        return img
+
     def draw(self, s, g, font):
-        """Joystick y botones semitransparentes; los botones muestran su recarga."""
+        """Joystick y botones semitransparentes; los botones muestran su recarga. Todo va precalculado."""
         if not self.active:
             return
-        layer = getattr(self, '_layer', None)
-        if layer is None:
-            layer = self._layer = pygame.Surface((W, H), pygame.SRCALPHA)
-        layer.fill((0, 0, 0, 0))
         cx, cy = self.joy_c
-        pygame.draw.circle(layer, (20, 14, 40, 110), (int(cx), int(cy)), JOY_R)
-        pygame.draw.circle(layer, (190, 160, 255, 150), (int(cx), int(cy)), JOY_R, 3)
+        base = self._disc(JOY_R, (20, 14, 40, 110), (190, 160, 255, 150))
+        s.blit(base, (int(cx) - JOY_R - 1, int(cy) - JOY_R - 1))
         kx, ky = cx + self.joy_v[0] * JOY_R, cy + self.joy_v[1] * JOY_R
-        pygame.draw.circle(layer, (190, 160, 255, 170), (int(kx), int(ky)), 28)
-        pygame.draw.circle(layer, (240, 230, 255, 200), (int(kx), int(ky)), 28, 2)
+        knob = self._disc(28, (190, 160, 255, 170), (240, 230, 255, 200), 2)
+        s.blit(knob, (int(kx) - 29, int(ky) - 29))
         b = getattr(g, 'bat', None)
         ready = {'screech': 1 - g.cd / g.cd_max if b else 1,
                  'dash': 1 - b.dash_cd / DASH_CD if b else 1,
                  'shield': (1 - b.shield_cd / 15.0) if b and b.shield_t <= 0 else 1}
         cols = {'screech': (120, 210, 255), 'dash': (255, 200, 120), 'shield': (90, 220, 170),
                 'pause': (210, 200, 235), 'map': (210, 200, 235)}
+        labels = self.__dict__.setdefault('_labels', {})
         for name, (bx, by), r, label in self.buttons():
             col = cols[name]
             lit = name in self.pressed
             k = max(0.0, min(1.0, ready.get(name, 1)))
-            pygame.draw.circle(layer, (*[int(c * .25) for c in col], 150 if not lit else 210), (bx, by), r)
-            if k < 1:                                                 # recarga: arco que se llena
-                rect = pygame.Rect(bx - r, by - r, 2 * r, 2 * r)
-                pygame.draw.arc(layer, (*col, 230), rect, math.pi / 2, math.pi / 2 + math.tau * k, 4)
-            else:
-                pygame.draw.circle(layer, (*col, 230 if not lit else 255), (bx, by), r, 3)
-        s.blit(layer, (0, 0))
-        for name, (bx, by), r, label in self.buttons():
-            f = font if r > 30 else font
-            img = f.render(label, True, (245, 240, 255))
+            full = k >= 1
+            disc = self._disc(r, (*[int(c * .25) for c in col], 210 if lit else 150),
+                              (*col, 255 if lit else 230) if full else None)
+            s.blit(disc, (bx - r - 1, by - r - 1))
+            if not full:                                              # recarga: arco que se llena
+                pygame.draw.arc(s, col, pygame.Rect(bx - r, by - r, 2 * r, 2 * r), math.pi / 2, math.pi / 2 + math.tau * k, 4)
+            img = labels.get(label)
+            if img is None:
+                img = labels[label] = font.render(label, True, (245, 240, 255))
             s.blit(img, img.get_rect(center=(bx, by)))
+
+    def go_fullscreen(self):
+        """En el navegador: pantalla completa y horizontal (si el teléfono lo permite)."""
+        if getattr(self, '_fs_done', False):
+            return
+        self._fs_done = True
+        try:
+            import platform as _pf
+            win = _pf.window
+            doc = win.document
+            el = doc.documentElement
+            if hasattr(el, 'requestFullscreen'):
+                el.requestFullscreen()
+            elif hasattr(el, 'webkitRequestFullscreen'):
+                el.webkitRequestFullscreen()
+            try:
+                win.screen.orientation.lock('landscape')
+            except Exception:
+                pass
+        except Exception:
+            pass
