@@ -393,14 +393,18 @@ class Resting:
         if b == 'llorona' and self.hop <= 0 and random.random() < dt * .5:
             self.hop = .4
 
-    def draw(self, s, cam):
+    def _offset(self):
         ox = oy = 0.0
         if self.spin > 0:                                     # vueltita en círculo
             a = (1 - self.spin) * TAU
             ox, oy = math.cos(a) * 7 - 7, math.sin(a) * 5
         if self.hop > 0:                                      # brinquito feliz
             oy -= math.sin(math.pi * self.hop / .4) * 6
-        sx, sy = cam.apply(self.x + ox, self.y + oy - self.arrive * 30)
+        return ox, oy - self.arrive * 30
+
+    def draw(self, s, cam):
+        ox, oy = self._offset()
+        sx, sy = cam.apply(self.x + ox, self.y + oy)
         breathe = math.sin(self.t * (1.2 if self.behavior == 'dormilona' else 2)) * 1.2
         busy = self.flap_t > 0 or self.arrive > 0 or self.spin > 0 or self.hop > 0
         flap = self.t * 22 if busy else 1.3 + .15 * math.sin(self.t * 2)
@@ -408,7 +412,8 @@ class Resting:
         ui.draw_pup(s, sx, sy + breathe, flap, lean, name=self.name, t=self.t)
 
     def draw_fx(self, s, cam):
-        sx, sy = cam.apply(self.x, self.y)
+        ox, oy = self._offset()
+        sx, sy = cam.apply(self.x + ox, self.y + oy)
         ui.pup_extras(s, sx, sy, ui.PUP_LOOKS.get(self.name, {}), self.t)
         if self.behavior == 'llorona' and self.hop > 0:       # notita de alegría (ya no llora)
             q = 1 - self.hop / .4

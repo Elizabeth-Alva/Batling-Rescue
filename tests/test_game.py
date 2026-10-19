@@ -18,7 +18,8 @@ import difficulty  # noqa: E402
 import story  # noqa: E402
 from events import EventBus, NoiseEvent, ImpactEvent  # noqa: E402
 from settings import (NEST, NEST_T, GOAL, TILE, W, H, BAT_SPEED, MEMORY_ALPHA, SAFE_R,  # noqa: E402
-                      BRIGHTNESS_LEVELS, DEFAULT_BRIGHTNESS, SCREECH_CD, SCREECH_CD_DECIDED, REVEAL_T)
+                      BRIGHTNESS_LEVELS, DEFAULT_BRIGHTNESS, SCREECH_CD, SCREECH_CD_DECIDED, REVEAL_T,
+                      REVEAL_T_READER, DASH_CD, DASH_CD_AIR)
 from map import CaveMap  # noqa: E402
 from game import Game  # noqa: E402
 from scenes.play import PlayScene  # noqa: E402
@@ -57,6 +58,7 @@ class GameTests(unittest.TestCase):
         cls.levels = {lv: PlayScene(cls.game, lv) for lv in (1, 2, 3)}
 
     def fresh(self, level=1):
+        self.game.progress = Game.new_progress()          # sin mejoras de una prueba anterior
         s = PlayScene(self.game, level)
         s.spawn_t = 999
         return s
@@ -889,6 +891,247 @@ class GameTests(unittest.TestCase):
             else:
                 self.assertLess(moved, 40, p.name)                           # las demás no huyen
 
+
+    # ------------------------------------------------------------ documentos: historia, personajes y mejoras
+    def test_story_documents_characters_and_texts(self):
+        self.assertEqual([n for n, _ in story.PUPS[3]], ['Paco', 'Bolillo y Pozolito'])
+        self.assertEqual(story.LEVELS[3]['end_min'], 330)                 # la colonia parte a las 05:30
+        self.assertIn('dos vagonetas', story.BEHAVIOR_TEXT['gemelas'])
+        allt = ' '.join(' '.join(sh[1]) for c in story.CUTSCENES.values() for sh in c['shots'])
+        for frase in ('Abuela Canela', '05:30', 'la historia del ciempiés gigante', 'en ese momento no parecía importante',
+                      'Si algún día bajan a la mina, sigan el aire. El aire sabe salir', 'no despierten a lo que duerme al fondo',
+                      'Mullo escucha', 'Ya vuelvo. Quédense quietas', '«Sigan el aire', 'piel vieja de ciempiés',
+                      'Chispa contesta primero', 'la última en irse', 'ya casi va a amanecer', 'de regreso al nido de siempre',
+                      'dudan en seguirla'):
+            self.assertIn(frase.lower(), allt.lower())
+        self.assertNotIn('Eco la repetía', allt)
+        self.assertNotIn('una sola vida', allt)                          # ya no hay toma de «se queda con una vida»
+        n2 = [sh[0] for sh in story.CUTSCENES['n2_fin']['shots']]
+        self.assertNotIn('echo_room', n2)                                 # la Sala del Eco ahora es un mensaje en el juego
+        self.assertNotIn('La culpa se le vuelve decisión', ' '.join(story.ECHO_MESSAGE[1]))
+        self.assertNotIn('escape', [sh[0] for sh in story.CUTSCENES['final']['shots']])
+        self.assertEqual(story.BLACK_BEFORE.get('n1_intro'), 2.0)
+        apertura = [sh[0] for sh in story.CUTSCENES['apertura']['shots']]
+        self.assertIn('canela', apertura)
+        self.assertIn('advice', apertura)
+        from enemies import NAMES
+        self.assertEqual(NAMES['boss'], 'Xolthar')
+        import art
+        for c in story.CUTSCENES.values():                                # cada toma tiene su ilustración
+            for sh in c['shots']:
+                self.assertIn(sh[0], art.SHOTS)
+
+    def test_upgrade_1_reader_after_act_one(self):
+        s = self.fresh(1)
+        self.assertEqual(s.reveal_dur, REVEAL_T)
+        s.rescued_here = s.goal_here - 1
+        p = s.pups[0]
+        s.bat.carry = p
+        s.bat.x, s.bat.y = NEST
+        s._pups(0.01)
+        self.assertEqual(s.state, 'clear')
+        self.assertTrue(self.game.progress['reader'])
+        s2 = PlayScene(self.game, 2)
+        s2.cd = 0
+        s2.screech()
+        self.assertEqual(s2.reveal_dur, REVEAL_T_READER)
+        self.assertTrue(all(q.revealed == REVEAL_T_READER for q in s2.pups))
+        self.assertLess(REVEAL_T, REVEAL_T_READER)
+
+    def test_upgrade_3_follow_the_air(self):
+        s = self.fresh(3)
+        cv = s.cave
+        self.assertTrue(any(cv.current), 'la corriente tiene una zona definida')
+        self.assertIsNotNone(cv.molt, 'la piel vieja de Xolthar está en la entrada de la mina')
+        self.assertFalse(s.air_flow)
+        i = cv.current.index(1)
+        x, y = (i % cv.w) * TILE + TILE / 2, (i // cv.w) * TILE + TILE / 2
+        b = s.bat
+        b.x, b.y = x, y
+        self.assertTrue(s.in_air(), 'dentro de la corriente el impulso se recarga más rápido')
+        s.moment('follow_air')
+        self.assertTrue(s.air_flow and self.game.progress['air'])
+        self.assertTrue(s.in_air())
+        b.dash_cd = DASH_CD                                                # dentro de la corriente: 1.8 s
+        t = 0.0
+        while b.dash_cd > 0 and t < 5:
+            s.cd = 0
+            s.bat.x, s.bat.y = x, y
+            b.vx = b.vy = 0
+            dt = 1 / 60
+            if s.in_air() and b.dash_cd > 0:
+                b.dash_cd = max(0, b.dash_cd - dt * (DASH_CD / DASH_CD_AIR - 1))
+            b.dash_cd = max(0, b.dash_cd - dt)
+            t += dt
+        self.assertAlmostEqual(t, DASH_CD_AIR, delta=.05)
+
+    def test_start_level_upgrades_follow_the_story(self):
+        g = self.game
+        g.start_level(2)
+        self.assertTrue(g.progress['reader'])
+        self.assertFalse(g.progress['decided'])
+        g.start_level(3)
+        self.assertTrue(g.progress['reader'] and g.progress['decided'])
+        self.assertFalse(g.progress['air'])
+        g.pending, g.fade_dir = None, 0
+
+    def test_low_point_breather_any_act(self):
+        s = self.fresh(1)
+        b = s.bat
+        e = Enemy(b.x + 200, b.y, 'spider')
+        e.state = 'chase'
+        s.enemies = [e]
+        s.moment('low_point')
+        self.assertEqual(e.state, 'patrol')
+
+    def test_new_cutscene_shots_draw(self):
+        import art
+        surf = pygame.Surface((W, H))
+        for key in ('return_nest', 'canela', 'tale', 'goodbye', 'advice', 'leaving', 'recall', 'near_dawn', 'mine_gate', 'escape', 'dawn_nest',
+                    'true_voice', 'departure'):
+            shot = art.SHOTS[key]()
+            for t in (0.0, 1.5, 4.0):
+                shot.draw(surf, t, 8.0)
+
+    def test_wake_recalls_follow_the_air(self):
+        s = self.fresh(3)
+        twins = [p for p in s.pups if p.behavior == 'gemelas'][0]
+        s.bat.x, s.bat.y = twins.x, twins.y
+        s._pups(0.01)
+        self.assertEqual(s.state, 'wake')
+        for _ in range(400):
+            if s.state != 'wake':
+                break
+            s.update(1 / 60)
+        self.assertEqual(s.state, 'play')
+        self.assertTrue(s.air_flow, 'al despertar Xolthar, Mullo recuerda «sigue el aire»')
+
+    def test_echo_room_is_a_message_without_pause(self):
+        s = self.fresh(2)
+        s.moment('echo_room')
+        self.assertEqual(s.state, 'play')
+        self.assertIsNotNone(s.banner)
+        s.draw(self.game.screen)
+        s.banner[2] = s.BANNER_T                                         # el mensaje se va solo
+        s.update(1 / 60)
+        self.assertIsNone(s.banner)
+
+    def test_chispa_trail_only_leads_to_her(self):
+        cv = self.levels[1].cave
+        chispa = cv.pup_spots[0]
+        web, cv.web = cv.web, set()                                      # el rastro pasa bajo la telaraña
+        path = cv.path(NEST, chispa, walk=False) or []
+        cv.web = web
+        self.assertTrue(cv.trail_marks)
+        for x, y, *_ in cv.trail_marks:                                  # cada rastro está sobre el camino a Chispa
+            self.assertLess(min(math.dist((x, y), p) for p in path), 20)
+
+    def test_pink_guides_are_brief(self):
+        s = self.fresh(1)
+        s.cd = 0
+        s.screech()
+        from settings import GUIDE_T
+        p = s.pups[0]
+        self.assertGreater(p.revealed, 0)
+        p.revealed = s.reveal_dur - GUIDE_T - .1                         # pasó el momento: ya no hay flecha
+        p.ping = 2.0                                                     # chillar ya no enciende flechas
+        targets = [q for q in s.pups if q.revealed > 0 and s.reveal_dur - q.revealed < GUIDE_T]
+        self.assertNotIn(p, targets)
+
+    def test_black_pause_before_act_one(self):
+        g = Game()
+        g.progress = Game.new_progress(1)
+        g.pending, g.fade_dir = None, 0
+        g._goto_step()
+        self.assertEqual(g.hold, 2.0)
+        g.fade = 255
+        g._fade_step(1.0)
+        self.assertEqual(type(g.scene).__name__, 'TitleScene')           # sigue en negro
+        g._fade_step(1.1)
+        g._fade_step(.01)
+        self.assertEqual(type(g.scene).__name__, 'CutsceneScene')
+
+    def test_whisper_shows_while_playing(self):
+        s = self.fresh(1)
+        self.assertNotIn('whisper', [sh[0] for sh in story.CUTSCENES['n1_fin']['shots']])
+        s.moment('whisper')
+        self.assertEqual(s.state, 'play')
+        self.assertEqual(s.banner[0], story.WHISPER_MESSAGE[0])
+        self.assertTrue(any(fx[0] == 'whisper' for fx in s.story_fx))
+        for _ in range(30):
+            s.update(1 / 60)
+        s.draw(self.game.screen)
+
+    def test_finding_eco_has_animation(self):
+        s = self.fresh(2)
+        s.moment('echo_room')
+        self.assertTrue(any(fx[0] == 'echo' for fx in s.story_fx))
+        for _ in range(120):
+            s.update(1 / 60)
+        s.draw(self.game.screen)
+
+    def test_pups_found_in_order_and_no_guano(self):
+        for lv in (1, 2):
+            cv = self.levels[lv].cave
+            def d(p):
+                return cv.flow[int(p[1] // TILE)][int(p[0] // TILE)]
+            names = [n for n, _ in story.PUPS[lv]]
+            spots = dict(zip(names, cv.pup_spots))
+            order = ['Chispa', 'Bruno', 'Lía'] if lv == 1 else ['Nube', 'Tito', 'Mora']
+            ds = [d(spots[n]) for n in order]
+            self.assertEqual(ds, sorted(ds), f'acto {lv}: las crías se encuentran en orden')
+        self.assertFalse(any(k == 'guano' for _, _, k, _ in self.levels[1].cave.trail_marks))
+
+    def test_mullo_idle_is_cute(self):
+        s = self.fresh(1)
+        s.idle_t = 5.0
+        pose = s.mullo_pose()
+        self.assertEqual(pose.get('mood'), 'happy')
+        self.assertGreater(pose.get('fold', 0), .5)
+        for _ in range(60):
+            s.update(1 / 60)
+        self.assertTrue(s.hearts)
+        s.draw(self.game.screen)
+
+    def test_hunters_take_three_hits_and_level2_between(self):
+        s = self.fresh(3)
+        b = s.bat
+        hu = Enemy(b.x + 40, b.y, 'hunter')
+        for k in range(3):
+            self.assertGreater(hu.hp, 0)
+            hu.hit_by_screech(b.x, b.y)
+        self.assertEqual(hu.hp, 0)
+        p1, p2, p3 = difficulty.params(1), difficulty.params(2), difficulty.params(3)
+        for f in ('patrol_speed', 'chase_speed', 'max_enemies', 'detect_radius'):
+            self.assertLess(getattr(p1, f), getattr(p2, f))
+            self.assertLess(getattr(p2, f), getattr(p3, f))
+        self.assertGreater(p2.spawn_interval, p3.spawn_interval)
+
+    def test_touch_controls(self):
+        g = Game()
+        s = PlayScene(g, 1)
+        s.spawn_t = 999
+        g.scene, g.pending = s, None
+        E = pygame.event.Event
+        x0, y0 = 118 / W, (H - 128) / H                                   # joystick: tocar y arrastrar a la derecha
+        g._finger(E(pygame.FINGERDOWN, x=x0, y=y0, finger_id=1, dx=0, dy=0), 0.0)
+        self.assertTrue(g.touch.active)
+        g._finger(E(pygame.FINGERMOTION, x=x0 + 60 / W, y=y0, finger_id=1, dx=0, dy=0), 0.0)
+        mv = s._mv()
+        self.assertGreater(mv[0], .5)
+        g._finger(E(pygame.FINGERUP, x=x0 + 60 / W, y=y0, finger_id=1, dx=0, dy=0), 0.0)
+        self.assertEqual(s._mv(), (0.0, 0.0))
+        bx, by = [b[1] for b in g.touch.buttons() if b[0] == 'screech'][0]  # botón de grito
+        s.cd = 0
+        g._finger(E(pygame.FINGERDOWN, x=bx / W, y=by / H, finger_id=2, dx=0, dy=0), 0.0)
+        self.assertGreater(s.cd, 0)
+        px, py = [b[1] for b in g.touch.buttons() if b[0] == 'pause'][0]   # pausa y tocar para seguir
+        g._finger(E(pygame.FINGERDOWN, x=px / W, y=py / H, finger_id=3, dx=0, dy=0), 0.0)
+        self.assertEqual(s.state, 'pause')
+        s.draw(g.screen)
+        g._finger(E(pygame.FINGERDOWN, x=.5, y=.3, finger_id=4, dx=0, dy=0), 0.0)
+        self.assertEqual(s.state, 'play')
+        s.draw(g.screen)
 
 if __name__ == "__main__":
     unittest.main()

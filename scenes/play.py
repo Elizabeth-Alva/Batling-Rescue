@@ -18,9 +18,9 @@ from pups import Pup
 from scenes import Scene
 from scenes.overlays import draw_overlay
 from settings import (W, H, NEST, NEST_R, SAFE_R, TILE, BAT_HP, SCREECH_CD, SCREECH_CD_DECIDED, SCREECH_R,
-                      REVEAL_T, ECHO_FLASH_T, SHIELD_CD, BRIGHTNESS_LEVELS, IMPACT_NOISE_MIN, IMPACT_NOISE_MAX,
-                      C_IMPACT, C_GREEN, C_PUP, C_GOLD)
-from story import LEVELS, PUPS, pup_count, rescued_before
+                      REVEAL_T, REVEAL_T_READER, ECHO_FLASH_T, SHIELD_CD, DASH_CD, DASH_CD_AIR, BRIGHTNESS_LEVELS,
+                      IMPACT_NOISE_MIN, IMPACT_NOISE_MAX, C_IMPACT, C_GREEN, C_PUP, C_GOLD)
+from story import LEVELS, PUPS, ECHO_MESSAGE, WHISPER_MESSAGE, pup_count, rescued_before
 
 
 def _web_tile():
@@ -88,7 +88,7 @@ def _dawn_rays(r=230, col=(36, 22, 8)):
     return pygame.transform.smoothscale(sm, (2 * r, 2 * r))
 
 
-PUP_SC = .6                  # tamaño de las crías en el suelo (un poco más grandes para que se note su carácter)
+PUP_SC = .7                  # tamaño de las crías en el suelo (un poco más grandes para que se note su carácter)
 
 
 class PlayScene(Scene):
@@ -113,7 +113,19 @@ class PlayScene(Scene):
         self.rescued_here, self.goal_here = 0, pup_count(level)
         self.diff = difficulty.params(level, 0)
         prog = getattr(game, 'progress', {})
-        self.cd_max = SCREECH_CD_DECIDED if prog.get('decided') else SCREECH_CD
+        # mejoras de Mullo: llegan por la historia (no por puntos) y no se anuncian con texto
+        self.cd_max = SCREECH_CD_DECIDED if prog.get('decided') else SCREECH_CD      # II: grito decidido
+        self.reveal_dur = REVEAL_T_READER if prog.get('reader') else REVEAL_T        # I: leer la cueva
+        self.air_flow = bool(prog.get('air')) and level == 3                         # III: vuelo con la corriente
+        self.upgrade_fx = {}                                  # brillo breve de la barra que mejoró (sin texto)
+        self.banner = None                                    # mensaje en pantalla que no pausa el juego [título, líneas, t]
+        self.story_fx = []                                    # animaciones de la historia en pleno juego [tipo, t, x, y]
+        self.idle_t = 0.0                                     # cuánto lleva Mullo quieta (animación tierna)
+        self.hug_t = 0.0                                      # abrazo breve al levantar a una cría
+        self.nest_glow = 0.0                                  # el nido brilla al recibir a una cría
+        self.hearts = []                                      # corazoncitos que suben [x, y, edad, vx, tamaño]
+        self.heart_cd = 0.0
+        self.upgrade_sfx_t = None                             # sonido de mejora diferido (al terminar el acto I)
         self.cd = self.shake = self.t = 0.0
         self.spawn_t = 3.0
         self.drip = 1.0
@@ -146,7 +158,7 @@ class PlayScene(Scene):
         self.sky_dust = []                                    # polvo que flota en la luz (no hay insectos: sequía)
         self.salamanders = spawn_salamanders(cv) if self.cfg['theme'] == 'lake' else []   # salamandras de cueva
         self.defeated = []                                    # enemigos vencidos (animación amable)
-        sc = cv.secret                                        # sala secreta: escondite y medio corazón
+        sc = cv.secret                                        # sala secreta: escondite y un corazón
         self.secret_heart = sc['center'] if sc else None
         self.sparkles = []
         self.fireflies = []                                   # (sin luciérnagas)
@@ -159,7 +171,7 @@ class PlayScene(Scene):
         self.stones = [FloatStone(x, y) for x, y in cv.stones]                           # piedras flotantes (lago)
         self.cans = [HangingCan(wl, an) for wl, an in cv.cans]                            # latas colgadas (mina)
         # población inicial
-        n0 = {1: 4, 2: 6, 3: 7}[level]
+        n0 = {1: 4, 2: 7, 3: 8}[level]
         for _ in range(n0):
             self.spawn_enemy(NEST, 800)
         self.drop_spider = None                               # susto amable del inicio (solo en el nivel 1)
@@ -205,18 +217,36 @@ class PlayScene(Scene):
         self.done_moments.add(key)
         b = self.bat
         if key == 'whisper':                                  # elemento plantado: el susurro sube desde abajo
-            self.sounds.play('whisper', base=.6)
-        elif key == 'echo_room':                              # punto medio: su propia voz; la culpa se vuelve decisión
+            self.sounds.play('whisper', base=.8)
+            self.banner = [WHISPER_MESSAGE[0], WHISPER_MESSAGE[1], 0.0]    # se muestra jugando, sin pausa
+            self.story_fx.append(['whisper', 0.0, b.x, b.y])
+        elif key == 'echo_room':                              # punto medio: encuentra a Eco y entiende; la culpa se vuelve decisión
+            self.banner = [ECHO_MESSAGE[0], ECHO_MESSAGE[1], 0.0]          # mensaje sin pausar el juego
+            ex, ey = self.cave.echo
+            self.story_fx.append(['echo', 0.0, ex, ey])                    # animación: la sala le devuelve su voz
+            for p in self.pups:
+                if p.behavior == 'eco':
+                    p.hop = .35
+                    p.joy = 3.5                                            # Eco brinca de alegría al verla
             self.sounds.play('whisper', base=1.0)
             self.sounds.play('story', base=.6)
             self.cd_max = SCREECH_CD_DECIDED
             self.cd = 0
+            self.sounds.play('upgrade', base=.8)
+            self.upgrade_fx['screech'] = 2.5
             if hasattr(self.game, 'progress'):
                 self.game.progress['decided'] = True
             for k in range(3):
                 self.rings.append([b.x, b.y, -k * 60, 420, (200, 180, 255)])
+        elif key == 'follow_air':                             # 3.ª mejora: recuerda a la Abuela, «sigue el aire»
+            self.sounds.play('canela', base=.55)
+            self.sounds.play('upgrade', base=.8)
+            self.air_flow = True
+            self.upgrade_fx['dash'] = 2.5
+            if hasattr(self.game, 'progress'):
+                self.game.progress['air'] = True
         elif key == 'low_point':                              # un respiro: los cercanos pierden el rastro
-            self.sounds.play('story', base=.5)
+            self.sounds.play('story', base=.5 if self.level == 2 else .3)
             for e in self.enemies:
                 if e.kind != 'boss' and math.dist((e.x, e.y), (b.x, b.y)) < 420:
                     e.state, e.target, e.path, e.stun = 'patrol', None, [], 1.5
@@ -239,8 +269,17 @@ class PlayScene(Scene):
 
     def dash(self, mv):
         mx, my = pygame.mouse.get_pos()
-        if self.bat.try_dash(mv, self.camera.to_world(mx, my)):
-            self.sounds.play('dash')
+        aim = self.camera.to_world(mx, my)
+        b = self.bat
+        if self.touch_on() and not (mv[0] or mv[1]):          # con el dedo: hacia donde iba (o hacia adelante)
+            sp = math.hypot(b.vx, b.vy)
+            aim = (b.x + b.vx / sp * 50, b.y + b.vy / sp * 50) if sp > 5 else (b.x, b.y - 50)
+        if b.try_dash(mv, aim):
+            self.sounds.play('dash_air' if self.in_air() else 'dash')
+
+    def in_air(self):
+        """¿Mullo vuela dentro de la corriente de aire de la mina? Ahí su impulso se recarga más rápido."""
+        return self.level == 3 and self.cave.in_current(self.bat.x, self.bat.y)
 
     def screech(self):
         """Grito sónico: aturde y daña a los cercanos, despeja telarañas y marca a las crías en el minimapa."""
@@ -248,11 +287,11 @@ class PlayScene(Scene):
             return
         b = self.bat
         self.cd, self.shake = self.cd_max, .15
-        self.sounds.play('screech')
-        self.echo_t, self.echo_origin, self.reveal_t = ECHO_FLASH_T, (b.x, b.y), REVEAL_T
+        self.sounds.play('screech_decided' if self.cd_max <= SCREECH_CD_DECIDED else 'screech')
+        self.echo_t, self.echo_origin, self.reveal_t = ECHO_FLASH_T, (b.x, b.y), self.reveal_dur
         self.cave.mark_circle(b.x, b.y, SCREECH_R * 2.4)           # ecolocación: dibuja el entorno en el mapa
         for p in self.pups:
-            p.revealed = REVEAL_T
+            p.revealed = self.reveal_dur
         for e in self.enemies:
             if math.dist((e.x, e.y), (b.x, b.y)) < SCREECH_R + e.rad:
                 e.hit_by_screech(b.x, b.y)
@@ -299,8 +338,53 @@ class PlayScene(Scene):
     def _mv(self):
         K = pygame
         ks = K.key.get_pressed()
-        return (int(ks[K.K_d] or ks[K.K_RIGHT]) - int(ks[K.K_a] or ks[K.K_LEFT]),
-                int(ks[K.K_s] or ks[K.K_DOWN]) - int(ks[K.K_w] or ks[K.K_UP]))
+        mv = (int(ks[K.K_d] or ks[K.K_RIGHT]) - int(ks[K.K_a] or ks[K.K_LEFT]),
+              int(ks[K.K_s] or ks[K.K_DOWN]) - int(ks[K.K_w] or ks[K.K_UP]))
+        touch = getattr(self.game, 'touch', None)
+        if mv == (0, 0) and touch is not None and touch.active:      # joystick táctil
+            return touch.move()
+        return mv
+
+    def touch_on(self):
+        t = getattr(self.game, 'touch', None)
+        return t is not None and t.active
+
+    MENU_BTN = pygame.Rect(W // 2 - 90, 500, 180, 46)                # botón «Menú» en pausa / derrota (táctil)
+
+    def on_touch(self, ev, name):
+        """Toques en el juego: botones de habilidades y, en las pantallas superpuestas, tocar para seguir."""
+        if ev.type != pygame.FINGERDOWN:
+            return
+        g = self.game
+        x, y = ev.x * W, ev.y * H
+        if self.state == 'play':
+            if name == 'screech':
+                self.screech()
+            elif name == 'dash':
+                self.dash(self._mv())
+            elif name == 'shield':
+                self.shield()
+            elif name == 'pause':
+                self.state = 'pause'
+                self.sounds.play('menu_move')
+            elif name == 'map':
+                self.big_map = not self.big_map
+                self.sounds.play('menu_move')
+        elif self.state == 'pause':
+            if name == 'map':
+                self.big_map = not self.big_map
+            elif self.MENU_BTN.collidepoint(x, y):
+                g.goto('title')
+            else:
+                self.state = 'play'
+                self.big_map = False
+        elif self.state == 'over':
+            if self.MENU_BTN.collidepoint(x, y):
+                g.goto('title')
+            else:
+                g.retry_level(self.level)
+        elif self.state == 'clear' and self.clear_t > 1.2:
+            g.advance()
 
     def handle(self, ev):
         g, K = self.game, pygame
@@ -333,7 +417,7 @@ class PlayScene(Scene):
                 g.retry_level(self.level)
             elif self.state == 'clear' and self.clear_t > 1.2 and k in (K.K_RETURN, K.K_SPACE):
                 g.advance()
-        elif ev.type == K.MOUSEBUTTONDOWN and self.state == 'play':
+        elif ev.type == K.MOUSEBUTTONDOWN and self.state == 'play' and not self.touch_on():
             if ev.button == 1:
                 self.screech()
             elif ev.button == 3:
@@ -341,6 +425,7 @@ class PlayScene(Scene):
 
     # ------------------------------------------------------------ lógica
     WAKE_T = 2.6
+    BANNER_T = 11.0
 
     def _update_wake(self, dt):
         """Animación del despertar: la cámara va al gigante, la cueva tiembla, abre los ojos y ruge."""
@@ -365,6 +450,8 @@ class PlayScene(Scene):
             self.sounds.play('roar', base=1.0)
             for k2 in range(4):
                 self.rings.append([bo.x, bo.y, -k2 * 70, 520, (255, 70, 50)])
+        if t > 1.9:                                           # Mullo recuerda el consejo: «sigue el aire»
+            self.moment('follow_air')
         for r in self.rings:
             r[2] += dt * 320
         self.rings = [r for r in self.rings if r[2] < r[3]]
@@ -378,13 +465,16 @@ class PlayScene(Scene):
             s[4] += dt
             if s[3] == 'rock':
                 s[2] += 420 * dt                              # cae (en pantalla, eje y)
+            elif s[3] == 'fluff':                             # pelusita del nido: cae flotando
+                s[0] += math.sin(s[2] + s[4] * 4) * 16 * dt
+                s[1] += 22 * dt
             else:
                 s[0] += math.cos(s[2]) * 60 * dt
                 s[1] += math.sin(s[2]) * 60 * dt - 20 * dt
         self.sparkles = [s for s in self.sparkles if s[4] < (.7 if s[3] == 'rock' else 1.2)]
 
     def _secret(self, dt):
-        """Sala secreta: al entrar por primera vez se ilumina en el mapa; el medio corazón se recoge al tocarlo."""
+        """Sala secreta: al entrar por primera vez se ilumina en el mapa; el corazón se recoge al tocarlo."""
         cv, b = self.cave, self.bat
         if not cv.secret:
             return
@@ -426,7 +516,9 @@ class PlayScene(Scene):
             return self._update_wake(dt)
         if self.state == 'clear':
             self.clear_t += dt
-            self.t += 0
+            if self.upgrade_sfx_t is not None and self.clear_t >= self.upgrade_sfx_t:
+                self.upgrade_sfx_t = None
+                self.sounds.play('upgrade', base=.8)
             if self.clear_t > 4.5:
                 self.game.advance()
             return
@@ -441,6 +533,30 @@ class PlayScene(Scene):
         b.update(dt, mv, self.camera.to_world(mx, my), cv, self.bus)
         self.camera.follow(b.x, b.y, dt, vx=b.vx, vy=b.vy)
         self.cd, self.shake = max(0, self.cd - dt), max(0, self.shake - dt)
+        if self.in_air() and b.dash_cd > 0:                   # dentro de la corriente: 2.8 s -> 1.8 s
+            b.dash_cd = max(0, b.dash_cd - dt * (DASH_CD / DASH_CD_AIR - 1))
+        moving = mv != (0, 0) or math.hypot(b.vx, b.vy) > 25 or b.dash_t > 0
+        self.idle_t = 0.0 if moving else self.idle_t + dt
+        self.hug_t = max(0.0, self.hug_t - dt)
+        self.nest_glow = max(0.0, self.nest_glow - dt)
+        self._cute(dt)
+        for fx in self.story_fx:
+            fx[1] += dt
+            if fx[0] == 'echo':
+                for p in self.pups:
+                    if p.behavior == 'eco' and getattr(p, 'joy', 0) > 0:
+                        p.joy -= dt
+                        if p.hop <= 0:
+                            p.hop = .35
+        self.story_fx = [fx for fx in self.story_fx if fx[1] < (5.0 if fx[0] == 'whisper' else 6.0)]
+        if self.banner:
+            self.banner[2] += dt
+            if self.banner[2] > self.BANNER_T:
+                self.banner = None
+        for k in list(self.upgrade_fx):
+            self.upgrade_fx[k] -= dt
+            if self.upgrade_fx[k] <= 0:
+                del self.upgrade_fx[k]
         self.echo_t, self.reveal_t = max(0, self.echo_t - dt), max(0, self.reveal_t - dt)
         self.toast_t, self.spot_cd = max(0, self.toast_t - dt), max(0, self.spot_cd - dt)
         cv.mark_circle(b.x, b.y, TILE * 6, mem=True)
@@ -473,6 +589,7 @@ class PlayScene(Scene):
                 b.carry = p
                 self.sounds.play('pickup')
                 p.hop = .35                                 # brinca a los brazos de su madre
+                self.hug_t = .7                              # Mullo la abraza un momento con sus alas
                 if p.behavior == 'gemelas' and self.boss and self.boss.wake():
                     self.escape = True                       # clímax: el gigante despierta, empieza la huida
                     if not self.wake_done:
@@ -491,6 +608,7 @@ class PlayScene(Scene):
             self.rescued_here += p.count
             b.hp = min(BAT_HP, b.hp + 1)
             self.rings.append([NEST[0], NEST[1], 0, 140, C_GREEN])
+            self.nest_fx(p)
             self.sounds.play('deliver')
             self.diff = difficulty.params(self.level, self.rescued_here)
             if self.rescued_here >= self.goal_here:
@@ -499,6 +617,10 @@ class PlayScene(Scene):
                 self.sounds.play('win')
                 if hasattr(self.game, 'progress'):
                     self.game.progress['rescued'] = self.rescued
+                    if self.level == 1:                      # 1.ª mejora: los rastros de Chispa le enseñaron a leer la cueva
+                        self.game.progress['reader'] = True
+                if self.level == 1:
+                    self.upgrade_sfx_t = 1.1
                 return
             if self.level == 1 and self.rescued_here == 2:
                 self.moment('whisper')                       # elemento plantado
@@ -532,7 +654,7 @@ class PlayScene(Scene):
                         b.carry.t = 0
                     if b.hp <= 0:
                         return self.lose('lives')
-                    if b.hp == 1 and self.level == 2:
+                    if b.hp == 1:                             # un respiro con una sola vida (en todos los actos)
                         self.moment('low_point')
         if self.boss and self.boss.state == 'chase' and getattr(self.boss, 'waking', 0) <= 0:
             self.boss_roar_t -= dt                            # el gigante ruge mientras te persigue
@@ -610,11 +732,11 @@ class PlayScene(Scene):
         if self.cfg['theme'] == 'mine':                       # corriente de aire fresco hacia la salida
             cam = self.camera
             want = 90 if self.escape else 55
-            for _ in range(3):
+            for _ in range(10):                               # la corriente se ve solo donde sopla (a lo largo de los rieles)
                 if len(self.air) >= want:
                     break
                 x, y = cam.x + random.uniform(0, W), cam.y + random.uniform(0, H)
-                if not cv.solid_px(x, y):
+                if cv.in_current(x, y):
                     self.air.append([x, y, random.uniform(1.2, 2.4)])
             sp = 120 if self.escape else 75
             for a in self.air:
@@ -716,7 +838,9 @@ class PlayScene(Scene):
                 ui.draw_pup(c, bx + (k * 12 - 6 if p.count > 1 else 0), by + 16, self.t * 12 + k, 0.0, .5,
                             p.looks[k % len(p.looks)], self.t)
         if b.inv <= 0 or int(self.t * 12) % 2:
-            ui.draw_bat_tilted(c, bx, by, b.flap, b.tilt)
+            pose = self.mullo_pose()
+            flap = b.flap if not pose.get('fold') else 1.0 + .15 * math.sin(self.t * 2)
+            ui.draw_bat_tilted(c, bx, by, flap, b.tilt, **pose)
         self.light.apply(c, self, self.t)
         self._draw_after_light(c)
         self._draw_secret_fx(c)
@@ -727,7 +851,18 @@ class PlayScene(Scene):
             ring(c, sx, sy, r, col, .7 * (1 - r / mr), 2)
         self.light.draw_shield(c, self, self.t)
         self.light.draw_trail(c, self)
+        if self.story_fx:
+            self._draw_story_fx(c)
+        for x, y, age, vx, r in self.hearts:                  # corazoncitos (sobre la oscuridad)
+            if self.camera.visible(x, y, 20):
+                sx, sy = self.camera.apply(x, y)
+                k = min(1, age / .15) * max(0, 1 - (age - .9) / .5) if age > .9 else min(1, age / .15)
+                ui.mini_heart(c, sx + math.sin(age * 6) * 2, sy, r * (.7 + .3 * k), (int(255 * k), int(110 * k), int(160 * k)))
         ui.draw_hud(c, self)
+        if self.banner:
+            self._draw_banner(c)
+        if self.touch_on() and self.state == 'play':           # joystick y botones en pantalla
+            self.game.touch.draw(c, self, ui.F_XS)
         if self.toast_t > 0:                                  # solo confirma el cambio de brillo (tecla B)
             ui.text(c, ui.F_S, self.toast, W // 2, 92, (220, 215, 235), True)
         if self.big_map:
@@ -741,8 +876,158 @@ class PlayScene(Scene):
         elif self.state != 'play':
             draw_overlay(screen, self)
 
+    def mullo_pose(self):
+        if self.hug_t > 0:                                    # abraza a la cría que acaba de levantar
+            k = math.sin(math.pi * min(1, self.hug_t / .7))
+            return dict(fold=.8 * k, mood='happy')
+        return self._idle_pose()
+
+    def _idle_pose(self):
+        """Animación tierna cuando Mullo se queda quieta unos segundos: mira a los lados, se abraza con sus alas
+        (ojitos felices), bosteza y se vuelve a estirar. Con una cría en brazos, la apapacha."""
+        i = self.idle_t - 2.0
+        if i <= 0:
+            return {}
+        cyc = i % 8.0
+        ease = lambda q: q * q * (3 - 2 * q)
+        if cyc < 2.0:
+            return dict(look=math.sin(cyc * 3.2) * 1.3)
+        if cyc < 4.6:
+            return dict(fold=ease(min(1, (cyc - 2.0) / .6)), mood='happy')
+        if cyc < 5.6:
+            q = cyc - 4.6
+            return dict(fold=1 - .4 * ease(q), yawn=math.sin(math.pi * q), mood='closed' if q > .2 else 'happy')
+        return dict(fold=.6 * (1 - ease(min(1, (cyc - 5.6) / .8))))
+
+    def _cute(self, dt):
+        """Corazoncitos: cuando Mullo se abraza quieta, cuando está cerca de sus crías y cuando las rescata."""
+        b = self.bat
+        self.heart_cd -= dt
+        pose = self.mullo_pose()
+        if pose.get('mood') == 'happy' and self.heart_cd <= 0:
+            self.heart_cd = .55 if b.carry else .9
+            self.hearts.append([b.x + random.uniform(-8, 8), b.y - 14, 0.0, random.uniform(-10, 10), 4])
+        for p in self.pups:                                   # las crías se alegran al ver a su mamá
+            if p is not b.carry and p.found and math.dist((p.x, p.y), (b.x, b.y)) < 110 and random.random() < dt * .9:
+                self.hearts.append([p.x + random.uniform(-6, 6), p.y - 18, 0.0, random.uniform(-8, 8), 3])
+                p.hop = max(p.hop, .35)
+        if math.dist((b.x, b.y), NEST) < 150 and self.resting and random.random() < dt * 1.2:
+            r = random.choice(self.resting)                   # y las que ya están en el nido la saludan
+            self.hearts.append([r.x, r.y - 16, 0.0, random.uniform(-8, 8), 3])
+            r.flap_t = .5
+        for h in self.hearts:
+            h[2] += dt
+            h[0] += h[3] * dt
+            h[1] -= 26 * dt
+        self.hearts = [h for h in self.hearts if h[2] < 1.4]
+
+    def nest_fx(self, p):
+        """Al dejarla en el nido: el nido se ilumina y caen plumitas de pelusa; la cría hace lo suyo al llegar."""
+        self.rings.append([NEST[0], NEST[1], 0, 90, (255, 226, 160)])
+        for k in range(10):
+            self.sparkles.append([NEST[0] + random.uniform(-30, 30), NEST[1] - 40 + random.uniform(-10, 10),
+                                  random.uniform(0, math.tau), 'fluff', 0.0])
+        self.nest_glow = 1.2
+
+    def _draw_story_fx(self, c):
+        """Animaciones de la historia mientras se juega (no pausan nada)."""
+        cam, b = self.camera, self.bat
+        for kind, t, x, y in self.story_fx:
+            if kind == 'whisper':                             # ondas violetas y deformes suben desde lo hondo hacia Mullo
+                bx, by = cam.apply(b.x, b.y)
+                for k in range(6):
+                    q = ((t * .45 + k / 6) % 1)
+                    life = min(1, t / .6) * min(1, max(0, 1 - (t - 3.8) / 1.2))
+                    if life <= 0:
+                        continue
+                    r = int(40 + 220 * (1 - q))
+                    cy = by + 260 * (1 - q) + 40
+                    rect = pygame.Rect(0, 0, r * 2 + int(math.sin(t * 3 + k) * 50), int(r * .55))
+                    rect.center = (int(bx + math.sin(t * 2 + k * 1.3) * 30), int(cy))
+                    g = life * q
+                    pygame.draw.ellipse(c, (int(190 * g), int(160 * g), int(255 * g)), rect, 2)
+                if t < 2.5:                                   # Mullo se queda quieta un instante, escuchando
+                    k = math.sin(math.pi * t / 2.5)
+                    ring(c, bx, by, 26 + 6 * math.sin(t * 8), (200, 170, 255), .7 * k, 2)
+                life = min(1, t / .8) * min(1, max(0, (4.6 - t) / 1.2))
+                if life > 0:                                  # un «eco» de Mullo sube desde lo hondo: la voz parecida a la suya
+                    g = getattr(self, '_ghost', None)
+                    if g is None:
+                        g = self._ghost = pygame.Surface((110, 90), pygame.SRCALPHA)
+                    g.fill((0, 0, 0, 0))
+                    ui.draw_bat(g, 55, 45, t * 4, .9, (120, 90, 200), (150, 120, 230), (220, 200, 255), (240, 230, 255))
+                    q = min(1, t / 4.0)
+                    gx = bx + math.sin(t * 2.3) * 40
+                    gy = by + 230 - 170 * q
+                    g.set_alpha(int(110 * life * (.6 + .4 * math.sin(t * 9))))
+                    c.blit(g, (gx - 55 + math.sin(t * 13) * 2, gy - 45))
+                    qa = int(255 * life)                      # «?» sobre Mullo
+                    ui.text(c, ui.F_M, '?', bx + 18, by - 40 - 4 * math.sin(t * 4), (qa, int(qa * .85), qa), True)
+                if t < 4.5:                                   # la orilla de la pantalla late en violeta
+                    v = getattr(self, '_violet', None)
+                    if v is None:
+                        v = self._violet = pygame.Surface((W, H), pygame.SRCALPHA)
+                        for i in range(0, 90, 3):
+                            pygame.draw.rect(v, (120, 80, 220, int(90 * (1 - i / 90) ** 2)), (i, i, W - 2 * i, H - 2 * i), 3)
+                    v.set_alpha(int(255 * math.sin(math.pi * min(1, t / 4.5)) * (.6 + .4 * math.sin(t * 5))))
+                    c.blit(v, (0, 0))
+            elif kind == 'echo':                              # la sala junta sus rebotes y le devuelve su voz
+                sx, sy = cam.apply(x, y)
+                life = min(1, t / .5) * min(1, max(0, 1 - (t - 4.8) / 1.2))
+                for k in range(5):                            # rebotes que vienen de las paredes hacia Eco
+                    q = ((t * .5 + k / 5) % 1)
+                    r = 320 * (1 - q) + 20
+                    ring(c, sx, sy, r, (190, 170, 255), .55 * life * q, 2)
+                if t > 1.2:                                   # y luego la voz verdadera sale clara (dorada)
+                    for k in range(3):
+                        q = (((t - 1.2) * .6 + k / 3) % 1)
+                        ring(c, sx, sy, 20 + 260 * q, (255, 214, 140), .7 * life * (1 - q), 3)
+                bx, by = cam.apply(b.x, b.y)                  # un lazo de luz entre Mullo y Eco
+                k = life * (.5 + .5 * math.sin(t * 4))
+                steps = 14
+                for i in range(steps + 1):
+                    u = i / steps
+                    px = bx + (sx - bx) * u
+                    py = by + (sy - by) * u - math.sin(math.pi * u) * 26
+                    rr = 2 + 2 * math.sin(math.pi * u)
+                    pygame.draw.circle(c, (int(255 * k), int(200 * k), int(240 * k)), (int(px), int(py)), int(rr))
+                for i in range(6):                            # estrellitas de alegría que suben
+                    q = ((t * .4 + i / 6) % 1)
+                    hx = sx + math.sin(i * 2.1 + t) * 26
+                    hy = sy - 20 - 70 * q
+                    a = life * math.sin(math.pi * q)
+                    if a > .1:
+                        ui.star(c, hx, hy, 3 + 2 * a, (int(255 * a), int(150 * a), int(200 * a)))
+
+    def _draw_banner(self, c):
+        """Mensaje de la historia sobre el juego (no lo pausa): entra suave, se escribe solo y se desvanece."""
+        title, lines, t = self.banner
+        k = min(1, t / .5) * min(1, max(0, (self.BANNER_T - t) / .8))
+        if k <= 0:
+            return
+        w, h = 700, 46 + 24 * len(lines)
+        x0, y0 = (22, H - h - 18) if not self.touch_on() else ((W - w) // 2, 74)   # con dedos: arriba
+        pan = getattr(self, '_banner_panel', None)
+        if pan is None or pan.get_size() != (w, h):
+            pan = self._banner_panel = pygame.Surface((w, h), pygame.SRCALPHA)
+            for yy in range(h):
+                pan.fill((14, 8, 34, int(200 + 30 * yy / h)), (0, yy, w, 1))
+            pygame.draw.rect(pan, (190, 160, 255, 230), pan.get_rect(), 2, border_radius=14)
+            pan = pan
+        pan.set_alpha(int(255 * k))
+        c.blit(pan, (x0, y0 + int(20 * (1 - min(1, t / .5)))))
+        ui.text(c, ui.F_S, title.upper(), x0 + 22, y0 + 10, (int(255 * k), int(214 * k), int(150 * k)))
+        shown = int((t - .4) * 38)
+        y = y0 + 38
+        for ln in lines:
+            part = ln[:max(0, shown)]
+            shown -= len(ln)
+            if part:
+                ui.text(c, ui.F_XS, part, x0 + 22, y, tuple(int(v * k) for v in (238, 230, 252)))
+            y += 24
+
     def _draw_secret_fx(self, c):
-        """Luciérnagas de la sala secreta, el medio corazón flotando y destellos."""
+        """Luciérnagas de la sala secreta, el corazón flotando y destellos."""
         cam, t = self.camera, self.t + (self.wake_t or 0)
         sc = self.cave.secret
         if sc and cam.visible(*sc['center'], 220):
@@ -780,7 +1065,11 @@ class PlayScene(Scene):
                 continue
             sx, sy = cam.apply(x, y)
             f = 1 - life / 1.2
-            if kind == 'heart':
+            if kind == 'fluff':
+                g = int(235 * min(1, life / .2) * f)
+                pygame.draw.circle(c, (g, int(g * .95), int(g * .88)), (int(sx), int(sy)), 3)
+                pygame.draw.circle(c, (int(g * .6), int(g * .56), int(g * .5)), (int(sx + 2), int(sy - 1)), 2)
+            elif kind == 'heart':
                 ui.star(c, sx, sy, 3 + 2 * f, (255, int(120 + 100 * f), 170))
             else:
                 ui.star(c, sx, sy, 2 + 3 * f, (255, 240, int(120 + 100 * f)))
@@ -824,7 +1113,7 @@ class PlayScene(Scene):
             ui.draw_pup(c, sx + 22 - ox, sy - 3 + math.sin(self.t * 5 + 2) * 1.5, p.flap + 1.3, -p.sway(self.t + 1), PUP_SC,
                         p.looks[-1], self.t + 1, cry)
         else:
-            ui.draw_pup(c, sx, sy, p.flap, p.sway(self.t), PUP_SC, p.looks[0], self.t, p.ping > 0)
+            ui.draw_pup(c, sx, sy, p.flap, p.sway(self.t), PUP_SC, p.looks[0], self.t, p.ping > 0, p.scared > 0)
 
     def _draw_after_light(self, c):
         """Lo que debe verse aun en la oscuridad: ojos, nombres, niebla, corriente de aire y luz del amanecer."""
@@ -848,9 +1137,19 @@ class PlayScene(Scene):
         for a in self.air:
             fx, fy = self.cave.flow_dir(a[0], a[1])
             sx, sy = cam.apply(a[0], a[1])
-            k = min(1, a[2]) * (1 if self.escape else .65)
-            col = (int(150 * k), int(170 * k), int(190 * k))
-            pygame.draw.line(c, col, (sx, sy), (sx - fx * 12, sy - fy * 12), 1)
+            k = min(1, a[2]) * (1 if self.escape else .65) * (1.25 if self.air_flow else 1)
+            col = (min(255, int(170 * k)), min(255, int(180 * k)), min(255, int(196 * k)))
+            wob = math.sin(a[2] * 9 + a[0] * .05) * 2.5                  # rizos suaves del aire
+            pygame.draw.lines(c, col, False, [(sx, sy), (sx - fx * 7 - fy * wob, sy - fy * 7 + fx * wob),
+                                              (sx - fx * 14, sy - fy * 14)], 1)
+        if self.level == 1:                                   # los rastros de Chispa brillan un poco: guían hacia ella
+            for i, (x, y, kind, ang) in enumerate(self.cave.trail_marks):
+                d = math.dist((x, y), (b.x, b.y))
+                if d < 420 and cam.visible(x, y, 20):
+                    k = (1 - d / 420) * (.55 + .45 * math.sin(self.t * 2.5 - i * .6))
+                    sx, sy = cam.apply(x, y)
+                    pygame.draw.circle(c, (int(150 * k), int(120 * k), int(70 * k)), (int(sx), int(sy)), 7, 1)
+                    c.fill((int(255 * k), int(220 * k), int(150 * k)), (int(sx) - 1, int(sy) - 1, 3, 3))
         reach = max(300, BRIGHTNESS_LEVELS[self.game.brightness][2] * 1.3)
         for e in self.enemies:                                # ojos visibles en la oscuridad
             if not cam.visible(e.x, e.y, 80):
@@ -893,9 +1192,18 @@ class PlayScene(Scene):
         if cam.visible(*NEST, 80):
             for r in self.resting:
                 r.draw_fx(c, cam)
+            if self.nest_glow > 0:                            # el nido se ilumina al recibir a una cría
+                sx, sy = cam.apply(*NEST)
+                k = min(1, self.nest_glow / .6)
+                ring(c, sx, sy, NEST_R * (1.25 - .25 * k), (255, 214, 140), .8 * k, 3)
+                ring(c, sx, sy, NEST_R * .6 * (1.4 - .4 * k), (255, 240, 200), .6 * k, 2)
         for p in self.pups:                                   # detalles de cada cría (zzz, ondas de eco)
             if p is not b.carry and cam.visible(p.x, p.y):
-                sx, sy = cam.apply(p.x, p.y)
+                sx, sy = cam.apply(p.x, p.y + math.sin(self.t * 3 + p.x) * 1.5 - p.lift())
+                if p.count > 1 and (self.t % 5) < 1.6:      # las gemelas se dan cariño
+                    q = (self.t % 5) / 1.6
+                    ui.mini_heart(c, sx - (p.x - p.home[0]), sy - 22 - 8 * q, 3 + 2 * math.sin(math.pi * q),
+                                  (255, int(120 + 60 * q), 170))
                 for k, nm in enumerate(p.looks):
                     ui.pup_extras(c, sx + ((k * 44 - 22) - (p.x - p.home[0]) if p.count > 1 else 0), sy, ui.PUP_LOOKS.get(nm, {}), self.t + k)
         for p in self.pups:                                   # nombres de las crías cercanas

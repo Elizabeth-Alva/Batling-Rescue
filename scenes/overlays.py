@@ -8,6 +8,18 @@ from settings import W, H, GOAL, C_GREEN, C_RED, C_PURPLE, C_GOLD, C_PUP
 _VEIL = None
 
 
+def _touch(g):
+    t = getattr(g.game, 'touch', None)
+    return t is not None and t.active
+
+
+def _menu_btn(screen, g):
+    r = g.MENU_BTN
+    pygame.draw.rect(screen, (40, 26, 70), r, border_radius=14)
+    pygame.draw.rect(screen, (200, 160, 255), r, 2, border_radius=14)
+    ui.text(screen, ui.F_S, 'Menú principal', r.centerx, r.centery, (240, 232, 255), True)
+
+
 def draw_overlay(screen, g):
     global _VEIL
     if _VEIL is None:                                   # el velo se crea una sola vez
@@ -18,8 +30,12 @@ def draw_overlay(screen, g):
     if state == 'pause':
         ui.text(screen, ui.F_L, 'PAUSA', cx, H // 2 - 70, center=True)
         ui.text(screen, ui.F_S, f'{cfg["act"]} · {cfg["name"]}', cx, H // 2 - 18, (200, 190, 230), True)
-        ui.text(screen, ui.F_S, 'P / Enter: continuar     M: mapa     B: brillo     Esc: menú principal',
-                cx, H // 2 + 30, (190, 180, 210), True)
+        if _touch(g):
+            ui.text(screen, ui.F_S, 'Toca la pantalla para continuar', cx, H // 2 + 30, (190, 180, 210), True)
+            _menu_btn(screen, g)
+        else:
+            ui.text(screen, ui.F_S, 'P / Enter: continuar     M: mapa     B: brillo     Esc: menú principal',
+                    cx, H // 2 + 30, (190, 180, 210), True)
     elif state == 'over':
         if g.lose_reason == 'dawn':
             ui.text(screen, ui.F_L, 'LA NOCHE SE ACABA', cx, 220, C_GOLD, True)
@@ -30,8 +46,12 @@ def draw_overlay(screen, g):
             ui.text(screen, ui.F_S, 'Agotada, se refugia en lo alto. Pero sus crías siguen allá abajo.',
                     cx, 290, (220, 210, 235), True)
         ui.text(screen, ui.F_M, f'Crías a salvo: {g.rescued}/{GOAL}', cx, 340, C_PUP, True)
-        ui.text(screen, ui.F_M, 'R / Enter: intentar de nuevo este nivel', cx, 400, C_GREEN, True)
-        ui.text(screen, ui.F_S, 'Esc: menú principal', cx, 445, (190, 180, 210), True)
+        if _touch(g):
+            ui.text(screen, ui.F_M, 'Toca para intentar de nuevo este nivel', cx, 400, C_GREEN, True)
+            _menu_btn(screen, g)
+        else:
+            ui.text(screen, ui.F_M, 'R / Enter: intentar de nuevo este nivel', cx, 400, C_GREEN, True)
+            ui.text(screen, ui.F_S, 'Esc: menú principal', cx, 445, (190, 180, 210), True)
     elif state == 'clear':
         k = min(1, g.clear_t / .6)
         ui.text(screen, ui.F_S, f'{cfg["act"].upper()} · COMPLETADO', cx, 210, C_GOLD, True)
@@ -41,4 +61,5 @@ def draw_overlay(screen, g):
         for i in range(GOAL):
             ui.pup_icon(screen, cx - 9 * 22 // 2 + i * 22 - 11 + 11, 410, 'safe' if i < g.rescued else 'lost', g.clear_t + i)
         if k >= 1 and g.clear_t > 1.2:
-            ui.text(screen, ui.F_S, 'Enter: continuar la historia', cx, 460, C_PURPLE, True)
+            ui.text(screen, ui.F_S, 'Toca para continuar la historia' if _touch(g) else 'Enter: continuar la historia',
+                    cx, 460, C_PURPLE, True)

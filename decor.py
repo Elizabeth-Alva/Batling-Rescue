@@ -251,24 +251,30 @@ def algae_cluster(s, x, y, rnd):
     pygame.draw.aaline(s, (40, 130, 90), (x - 6, y + 2), (x + 6, y - 2))
 
 
-def trail_mark(s, x, y, kind, ang):
-    """Rastros de las crías: piedritas, marcas de garras y guano."""
+def trail_mark(s, x, y, kind, ang, k=1.0):
+    """Rastros de las crías: piedritas movidas y rasguños. k > 1: más grandes y claros (los de Chispa)."""
+    if k > 1:                                                         # mancha clara debajo: se distingue del suelo
+        halo = pygame.Surface((int(30 * k), int(30 * k)), pygame.SRCALPHA)
+        for r in range(int(15 * k), 0, -2):
+            pygame.draw.circle(halo, (220, 200, 160, int(40 * (1 - r / (15 * k)))), (int(15 * k), int(15 * k)), r)
+        s.blit(halo, (x - 15 * k, y - 15 * k))
     if kind == 'pebble':
         rnd = random.Random(int(x * 7 + y))
-        for k in range(3):
-            pebble(s, x + math.cos(ang + k * 2.1) * 4, y + math.sin(ang + k * 2.1) * 4, 2.4, (150, 150, 140), rnd)
+        for j in range(3):
+            pebble(s, x + math.cos(ang + j * 2.1) * 4 * k, y + math.sin(ang + j * 2.1) * 4 * k, 2.4 * k,
+                   (190, 186, 172) if k > 1 else (150, 150, 140), rnd)
     elif kind == 'claw':
         ca, sa = math.cos(ang), math.sin(ang)
-        for k in (-4, 0, 4):
-            ax, ay = x - sa * k, y + ca * k
-            pts = [(ax - ca * 6, ay - sa * 6), (ax + ca * 1 - sa * .8, ay + sa * 1 + ca * .8), (ax + ca * 6, ay + sa * 6)]
-            pygame.draw.lines(s, (24, 18, 16), False, pts, 2)
-            pygame.draw.lines(s, (130, 120, 108), False, [(p[0] + 1, p[1] + 1) for p in pts], 1)
+        for j in (-4, 0, 4):
+            ax, ay = x - sa * j * k, y + ca * j * k
+            pts = [(ax - ca * 6 * k, ay - sa * 6 * k), (ax + ca * k - sa * .8 * k, ay + sa * k + ca * .8 * k), (ax + ca * 6 * k, ay + sa * 6 * k)]
+            pygame.draw.lines(s, (24, 18, 16), False, pts, 2 if k <= 1 else 3)
+            pygame.draw.lines(s, (196, 184, 160) if k > 1 else (130, 120, 108), False, [(p[0] + 1, p[1] + 1) for p in pts], 1 if k <= 1 else 2)
     else:
-        for k in range(4):
-            px, py = x + math.cos(ang + k * 1.6) * (2 + k), y + math.sin(ang + k * 1.6) * (2 + k)
-            pygame.draw.circle(s, (34, 28, 22), (int(px), int(py)), 2)
-            s.fill((70, 62, 50), (int(px) - 1, int(py) - 1, 1, 1))
+        for j in range(4):
+            px, py = x + math.cos(ang + j * 1.6) * (2 + j) * k, y + math.sin(ang + j * 1.6) * (2 + j) * k
+            pygame.draw.circle(s, (34, 28, 22), (int(px), int(py)), max(2, int(2 * k)))
+            s.fill((110, 98, 80) if k > 1 else (70, 62, 50), (int(px) - 1, int(py) - 1, 1, 1))
 
 
 # ---------------------------------------------------------------- mina

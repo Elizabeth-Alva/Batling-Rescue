@@ -16,20 +16,44 @@ CONTROLES
   B ................ brillo                R / Enter ............. reintentar el nivel
   En las cinemáticas: la historia espera; Espacio/Enter continúa, Esc salta la escena.
 
-HISTORIA (3 actos = 3 niveles, de la medianoche al amanecer)
-  Prólogo: año de sequía; la colonia se irá al amanecer. Mullo sale a cazar y deja a sus 10 crías.
-  Acto I  · Las Galerías de los Hongos (3 crías, arañas). Rastros de piedritas, garras y guano;
-           la cortina de telarañas se abre gritando; el susurro de madre (elemento plantado).
-  Acto II · El Lago Negro (4 crías, arañas y escarabajos). Agua con niebla e islotes: los bichos no
-           cruzan el agua, pero a Mullo el aire húmedo la frena. La Sala del Eco (punto medio): desde
-           ahí el grito se recarga más rápido. Con una vida: el punto más bajo.
-  Acto III· La Mina Vieja (3 crías, arañas, escarabajos y cazadores). Vigas, rieles, vagonetas y una
-           corriente de aire que apunta a la salida. Bolillo y Pozolito están en una vagoneta junto al Gran
-           Ciempiés, que no se puede vencer: tómalas y huye hacia la luz del amanecer.
-  Final:   la voz verdadera, la colonia parte completa.
-  Durante el juego no hay textos ni pausas: los momentos de la historia (susurro, telarañas, Sala del Eco,
-  punto más bajo, el gigante) se oyen y se ven en tiempo real, y las cinemáticas de inicio y fin de cada
-  acto los cuentan con palabras.
+HISTORIA (3 actos = 3 niveles, de la medianoche a la partida de la colonia, 05:30)
+  Prólogo: año de sequía. La Abuela Canela anuncia que la colonia se va a un refugio nuevo antes del
+           amanecer (05:30). Afuera, buscando comida, les dice a todos los grandes (Mullo con ellos; las
+           crías se quedaron en el nido), por si algún día se pierden en la cueva:
+           «Si bajan a la mina, sigan el aire. El aire sabe salir. Y no despierten a lo que duerme al
+           fondo». Mullo les dice a sus 10 crías «Ya vuelvo. Quédense quietas» y sale de la cueva a cazar
+           lejos. Antes del Acto I la pantalla se queda 2 segundos en negro.
+  Acto I  · Las Galerías de los Hongos (Chispa, Bruno y Lía; arañas). Los rastros de Chispa (piedritas,
+           rasguños) marcan solo el camino hacia ella y brillan un poco; el grito abre las cortinas de
+           telarañas; al llevar la segunda cría sube un susurro (animación y mensaje sin pausar el juego).
+  Acto II · El Lago Negro (Nube, Tito, Eco y Mora; arañas y escarabajos). Los bichos no cruzan el agua,
+           pero el aire húmedo frena a Mullo; las salamandras se sumergen al verla. Al encontrar a Eco en
+           la Sala del Eco aparece un mensaje (sin pausar el juego): el susurro era la cueva y el aire
+           sonando como ella, y la culpa se vuelve decisión. Al final ya casi va a amanecer y, en la entrada
+           de la mina, encuentra la piel vieja de un ciempiés gigante.
+  Acto III· La Mina Vieja (Paco y las gemelas Bolillo y Pozolito, cada una en su vagoneta; arañas,
+           escarabajos, cazadores y Xolthar, el Gran Ciempiés). Al tomar a las gemelas Xolthar despierta;
+           no se puede vencer: Mullo recuerda «sigue el aire» y la corriente la guía a la salida.
+  Final:   Mullo lleva a las gemelas de regreso al nido de siempre: las diez juntas otra vez. La colonia
+           sale y la Abuela Canela es la última en irse; Mullo vuela hacia la boca de la cueva y sus crías,
+           asustadas por tanto eco, dudan. Ella las llama con su voz verdadera: Chispa contesta primero y
+           detrás van las otras nueve con ella. La colonia parte completa.
+  En la Mina Vieja, dentro de la corriente de aire, el impulso de Mullo se recarga más rápido (1.8 s).
+  Los cazadores aguantan 3 gritos. El Acto II es un poco más difícil que el I, sin pasar al III.
+  Durante el juego no hay pausas: los momentos de la historia (susurro, telarañas, el gigante) se oyen y se
+  ven en tiempo real; la Sala del Eco se cuenta con un mensaje que no detiene el juego, y las cinemáticas
+  de inicio y fin de cada acto cuentan lo demás.
+
+PERSONAJES
+  Mullo (protagonista) · Xolthar, el Gran Ciempiés, y los bichos de la cueva (antagonistas) ·
+  Chispa (coprotagonista) · Abuela Canela (secundario: solo en el prólogo y el final).
+
+MEJORAS DE MULLO (una por acto, llegan por la historia; no se anuncian con texto: suenan y la barra brilla)
+  I   Leer la cueva ........ al terminar el Acto I: las crías marcadas por el grito duran 4 s (antes 3 s).
+      (Las flechas rosas solo aparecen un momento después de cada grito.)
+  II  Grito decidido ....... en la Sala del Eco: el grito se recarga en 1.7 s (antes 2.3 s).
+  III Vuelo con la corriente: dentro de la corriente de la mina el impulso se recarga en 1.8 s (antes 2.8 s);
+                             al despertar Xolthar, Mullo recuerda «sigan el aire» y la barra brilla.
 
 MECÁNICAS
   GRITO: aturde y daña a los enemigos cercanos, rompe telarañas y MARCA A LAS CRÍAS EN EL MINIMAPA.
@@ -44,13 +68,21 @@ MECÁNICAS
   ENEMIGO VENCIDO: se marea (estrellitas) y sale corriendo entre polvito. Nada de sangre (E10+).
   SALAMANDRAS: en el Lago Negro nadan salamandras de cueva; si ven a un murciélago se espantan y se sumergen.
   GOTERAS: de las estalactitas caen gotas que se oyen y salpican.
-  NIDO: las crías rescatadas descansan en el punto de entrega.
+  NIDO: las crías rescatadas descansan en el punto de entrega y saludan a Mullo con corazoncitos.
+  ANIMACIONES TIERNAS: si Mullo se queda quieta unos segundos mira a los lados, se abraza con sus alas,
+         bosteza y se estira; las crías se alegran al verla, las dormilonas hacen burbujita y las gemelas
+         se dan cariño. Las crías se encuentran en orden: Chispa primero, luego Bruno y Lía.
+         Cada cría se mueve según su forma de ser: Chispa y Paco dan saltitos con meneo, Lía solloza, Nube se tapa
+         los ojos cuando se asusta, Mora bosteza y Bruno respira con su pancita. Los mechones van en la pancita.
   SALA SECRETA: cada nivel esconde una sala (cambia de lugar en cada partida) tras raíces, una cortina
-         de agua o tablas sueltas. Ahí ningún enemigo entra y hay MEDIO CORAZÓN para recoger.
+         de agua o tablas sueltas. Ahí ningún enemigo entra y hay UN CORAZÓN para recoger.
          Acto I: sala de telarañas · Acto II: gruta de hierro natural · Acto III: herramientas de mineros.
-  HUIDA: el Gran Ciempiés despierta con una animación y suena música de persecución.
+  HUIDA: Xolthar despierta con una animación y suena música de persecución. La corriente de aire
+         (a lo largo de los rieles) apunta a la salida.
+  PIEL VIEJA: en la entrada de la mina está la muda de Xolthar (quieta, pálida y vacía).
+  RESPIRO: al quedar con una sola vida, los bichos cercanos pierden tu rastro un momento.
   RELOJ: cada acto tiene su tiempo; si se acaba, la noche termina y hay que reintentar.
-  PUNTO DE ENTREGA: el brillo dorado arriba a la izquierda; ahí nadie entra y recuperas una vida.
+  NIDO (punto de entrega): el brillo dorado arriba a la izquierda; ahí nadie entra y recuperas una vida.
 
 IMÁGENES CON IA (opcional)
   Las cinemáticas están dibujadas por código. Si guardas una imagen en assets/escenas/<escena>.png
@@ -63,6 +95,12 @@ CODIGO
   player.py · enemies.py · pups.py · map.py · camera.py · lighting.py · events.py
   difficulty.py · sound.py · ui.py · settings.py
   Pruebas: python -m unittest discover -s tests
+
+EN EL TELÉFONO (pantalla táctil)
+  Los controles táctiles aparecen solos al tocar la pantalla (con teclado y ratón todo sigue igual):
+  joystick a la izquierda (aparece donde pones el dedo) · GRITO, IMPULSO y ESCUDO abajo a la derecha
+  (muestran su recarga) · pausa y MAPA arriba · en menús, cinemáticas y pantallas: toca para continuar.
+  Juega con el teléfono en horizontal. Se abre desde la versión web (abajo).
 
 VERSION WEB (navegador, GitHub Pages)
   Se compila con pygbag (WebAssembly). Requiere:  pip install -r requirements-web.txt

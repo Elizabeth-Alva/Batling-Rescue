@@ -70,7 +70,7 @@ def build_sounds():
         e = lambda x: math.sin(TAU * 52 * x) * math.exp(-x * 22) if x >= 0 else 0
         return e(t) + .75 * e(t - .16)
     S['heartbeat'] = mk(.55, beat, .9)
-    # susurro de madre deformado por el eco: ruido con sílabas ("ya-vuel-vo, qué-den-se quie-tas")
+    # el susurro de la cueva: el aire y los rebotes suenan parecido a la voz de Mullo (sílabas sin palabras)
     syl = [(.0, .12), (.16, .3), (.34, .46), (.62, .74), (.78, .9), (.94, 1.04), (1.12, 1.3)]
     wn = [0.0]
 
@@ -101,7 +101,7 @@ def build_sounds():
     S['amb'] = mk(6.0, amb, .5)
     S.update(build_ambients())
     S['chase'] = build_chase()
-    # sala secreta: arpegio brillante;  medio corazón: dos notas dulces
+    # sala secreta: arpegio brillante;  corazón: dos notas dulces
     S['secret'] = mk(1.0, lambda t, p: sum(math.sin(TAU * f * t) * (1 if t > i * .12 else 0) * math.exp(-(t - i * .12) * 4)
                                           for i, f in enumerate((784, 988, 1175, 1568)) if t > i * .12) * .5, .4)
     S['heart'] = mk(.45, lambda t, p: math.sin(TAU * (880 if t < .15 else 1320) * t) * (1 - p) ** 1.2, .4)
@@ -131,6 +131,35 @@ def build_sounds():
     S['boing'] = mk(.55, lambda t, p: math.sin(TAU * (190 + 70 * math.sin(TAU * 11 * t) * (1 - p)) * t) * (1 - p) ** 1.5, .45)
     S['eek'] = mk(.22, chirp(1700, 3400, .22, env=lambda p: math.sin(math.pi * p) ** .5, vib=120), .3)
     S['zip'] = mk(.35, chirp(500, 2600, .35, env=lambda p: (1 - p) ** .6, noise=.15), .25)
+
+    # --- personajes y mejoras ---
+    # voz de la Abuela Canela: grave, rasposa y lenta (sílabas espaciadas, como sus dichos cortos)
+    csyl = [(.05, .32), (.42, .66), (.8, 1.12), (1.3, 1.52), (1.62, 1.98)]
+    cn = [0.0]
+
+    def canela(t, p):
+        cn[0] += .5 * (random.uniform(-1, 1) - cn[0])
+        a = 0.0
+        for s0, s1 in csyl:
+            if s0 <= t <= s1:
+                a = math.sin(math.pi * (t - s0) / (s1 - s0)) ** .7
+        f = 132 - 18 * p + 6 * math.sin(TAU * 4.5 * t)
+        tone = (math.sin(TAU * f * t) + .55 * math.sin(TAU * 2 * f * t + 1) + .3 * math.sin(TAU * 3 * f * t + 2)
+                + .35 * math.sin(TAU * 610 * t) * math.sin(TAU * f * t))
+        return (tone * .55 + cn[0] * .45) * a
+    S['canela'] = mk(2.1, canela, .5)
+    # mejora de Mullo: sonido corto y cálido, sin texto en pantalla (un soplo que sube y dos notas)
+    S['upgrade'] = mk(.7, lambda t, p: (math.sin(TAU * (660 if t < .22 else 990) * t) * math.exp(-((t % .22) * 9)) * .7
+                                        + math.sin(TAU * (330 + 660 * p) * t) * .25 * math.sin(math.pi * p)), .4)
+    # grito decidido (tras la Sala del Eco): más firme y un poco más grave
+    S['screech_decided'] = mk(.38, chirp(6200, 1500, .38, env=lambda p: (1 - p) ** .55, noise=.18, vib=55), .58)
+    # impulso con la corriente (3.ª mejora): el soplo suena más largo y con aire
+    an = [0.0]
+
+    def dash_air(t, p):
+        an[0] += .25 * (random.uniform(-1, 1) - an[0])
+        return (an[0] * 1.8 + .25 * math.sin(TAU * (420 + 300 * p) * t)) * math.sin(math.pi * p) ** .8
+    S['dash_air'] = mk(.34, dash_air, .45)
     return S
 
 

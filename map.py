@@ -12,7 +12,7 @@ from collections import deque
 import pygame
 
 import decor
-from settings import (TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, NEST, NEST_T, NEST_R, TAU, MEMORY_ALPHA)
+from settings import (TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, NEST, NEST_T, NEST_R, SAFE_R, TAU, MEMORY_ALPHA)
 from story import PUPS, LEVELS
 
 T = TILE
@@ -77,8 +77,11 @@ class CaveMap:
             self._make_web()
         if self.theme_name in ('fungi', 'lake'):
             self._make_trails(1.0 if self.theme_name == 'fungi' else .28)
+        self.current = bytearray(self.w * self.h)          # corriente de aire de la mina (zona que guía la huida)
+        self.molt = None                                    # piel vieja de Xolthar en la entrada de la mina
         if self.theme_name == 'mine':
             self._make_mine()
+            self._make_current()
         self._place_props()
         self.bg = self._render()
         self.explored = bytearray(self.w * self.h)
@@ -352,9 +355,12 @@ class CaveMap:
                                               for j in range(-3, 4) for i in range(-3, 4)
                                               if 0 <= t[0] + i < w and 0 <= t[1] + j < self.h)]
             pool = dry or pool
+            got = []
             for i in others:
-                res[i] = pick()
-                spots.append(res[i])
+                got.append(pick())
+                spots.append(got[-1])
+            for i, sp in zip(others, self._by_distance(got)):     # Nube, Tito y Mora en orden de distancia
+                res[i] = sp
             for i, (_, b) in enumerate(entries):
                 out.append(self.echo if b == 'eco' else res[i])
             return out
@@ -366,10 +372,19 @@ class CaveMap:
                 lt = min(self.land, key=lambda t: math.hypot(t[0] - c[0], t[1] - c[1]))
             self.lair = self._px(lt)
             spots.append(self.lair)
-            pipo = pick(700)
-            return [pipo, self._snap((self.lair[0] + 50, self.lair[1] + 12))]
-        out = [pick(prefer_far=(i == 2)) for i in range(len(entries))]
-        return out
+            paco = pick(700)
+            return [paco, self._snap((self.lair[0] + 50, self.lair[1] + 12))]
+        out = [pick() for _ in range(len(entries))]
+        return self._by_distance(out)                       # Chispa es la primera que encuentra, luego Bruno y Lía
+
+    def _by_distance(self, spots):
+        """Ordena los lugares del más cercano al nido al más lejano (las crías se encuentran en ese orden)."""
+        flow = self.flow
+        def far(p):
+            tx, ty = int(p[0] // T), int(p[1] // T)
+            d = flow[ty][tx] if 0 <= ty < self.h and 0 <= tx < self.w else -1
+            return d if d >= 0 else 1e6
+        return sorted(spots, key=far)
 
     def _make_web(self):
         """Cortina de telarañas en el punto más estrecho del camino hacia la cría más lejana (nivel 1)."""
@@ -411,16 +426,26 @@ class CaveMap:
                            sum(self._px(t)[1] for t in self.web) / len(self.web)) if self.web else None
 
     def _make_trails(self, frac):
-        """Rastros de las crías: piedritas, marcas de garras y guano que guían el camino."""
+        """Rastros: piedritas movidas y rasguños. En el Acto I son de Chispa y solo llevan hasta ella."""
         web, self.web = self.web, set()                     # los rastros pasan también bajo la telaraña
-        paths = [self.path(NEST, spot, walk=False) or [] for spot in self.pup_spots]
+        spots = self.pup_spots
+        if self.level == 1:                                 # Acto I: solo los rastros de Chispa, que llevan hacia ella
+            spots = [sp for (nm, _), sp in zip(PUPS[1], self.pup_spots) if nm == 'Chispa']
+        paths = [self.path(NEST, spot, walk=False) or [] for spot in spots]
         self.web = web
+        chispa = self.level == 1
         for path in paths:
             start = int(len(path) * (1 - frac))
-            for k in range(max(3, start), len(path) - 1, 2):
+            kinds = ('pebble', 'claw')                      # piedritas movidas y rasguños
+            for n, k in enumerate(range(max(3, start), len(path) - 1, 2)):
                 x, y = path[k]
-                self.trail_marks.append((x + random.uniform(-8, 8), y + random.uniform(-8, 8),
-                                         random.choice(('pebble', 'claw', 'guano')), random.uniform(0, TAU)))
+                if chispa:                                  # en orden y a lo largo del camino: se lee como una pista
+                    nx, ny = path[k + 1]
+                    self.trail_marks.append((x + random.uniform(-4, 4), y + random.uniform(-4, 4), kinds[n % 2],
+                                             math.atan2(ny - y, nx - x)))
+                else:
+                    self.trail_marks.append((x + random.uniform(-8, 8), y + random.uniform(-8, 8),
+                                             random.choice(kinds), random.uniform(0, TAU)))
 
     @staticmethod
     def _smooth(pts, win=3):
@@ -485,6 +510,33 @@ class CaveMap:
                         self.lamps.append((p[0], p[1], side))
                     break
 
+
+    def _make_current(self):
+        """La corriente de aire fresco: un pasillo a lo largo de los rieles, desde la guarida hasta la salida
+        (el nido). Es la zona donde, con la 3.ª mejora, el impulso se recarga más rápido."""
+        w, h = self.w, self.h
+        for x, y in self.rails:
+            tx, ty = int(x // T), int(y // T)
+            for j in range(-2, 3):
+                for i in range(-2, 3):
+                    nx, ny = tx + i, ty + j
+                    if 0 <= nx < w and 0 <= ny < h and i * i + j * j <= 5 and not self.g[ny][nx]:
+                        self.current[ny * w + nx] = 1
+        n = len(self.rails)                                    # la piel vieja: junto a los rieles, cerca de la entrada
+        for k in range(min(n - 2, 7), min(n - 2, 18)):
+            (ax, ay), (bx, by) = self.rails[k - 1], self.rails[k + 1]
+            ang = math.atan2(by - ay, bx - ax)
+            for side in (1, -1):
+                x = self.rails[k][0] - math.sin(ang) * 46 * side
+                y = self.rails[k][1] + math.cos(ang) * 46 * side
+                if math.dist((x, y), NEST) > SAFE_R + 60 and all(not self.solid_px(x + math.cos(ang) * d, y + math.sin(ang) * d)
+                                                                  for d in (-80, -40, 0, 40, 80)):
+                    self.molt = (x, y, ang)
+                    return
+
+    def in_current(self, x, y):
+        tx, ty = int(x // T), int(y // T)
+        return 0 <= tx < self.w and 0 <= ty < self.h and bool(self.current[ty * self.w + tx])
 
     # ------------------------------------------------------------ consultas
     def solid(self, tx, ty):
@@ -751,7 +803,10 @@ class CaveMap:
                         pygame.draw.line(bg, RIM_HI, a, b, 2)
         self._decorate(bg, th, solid)
         for x, y, kind, ang in self.trail_marks:
-            self._trail_mark(bg, x, y, kind, ang)
+            if self.level == 1:
+                decor.trail_mark(bg, x, y, kind, ang, 1.6)          # los rastros de Chispa: más grandes y claros
+            else:
+                self._trail_mark(bg, x, y, kind, ang)
         if self.theme_name == 'mine':
             self._draw_mine(bg)
         self._draw_delivery(bg)
@@ -949,6 +1004,10 @@ class CaveMap:
             decor.lantern(bg, x, y)
         for x, y, ang, lair in self.carts:
             draw_cart(bg, x, y, ang, 1.25 if lair else 1.0)
+        if self.molt:                                                # la piel vieja de Xolthar (quieta, pálida y vacía)
+            from art import draw_molt
+            x, y, ang = self.molt
+            draw_molt(bg, x, y, ang, 170, 150)
 
     def _draw_secret(self, bg):
         """Decoración de la sala secreta y la cortina que tapa su entrada."""

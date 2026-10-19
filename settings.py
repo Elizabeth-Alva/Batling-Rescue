@@ -35,13 +35,16 @@ BAT_HP = 5                             # vidas por nivel
 SCREECH_CD = 2.3                       # "tarda en recargarse" (un poco menos que antes)
 SCREECH_CD_DECIDED = 1.7               # tras la Sala del Eco usa el grito "a propósito"
 SCREECH_R = 165                        # alcance del aturdimiento
-REVEAL_T = 6.0                         # segundos que las crías quedan marcadas en el minimapa
+REVEAL_T = 3.0                         # segundos que las crías quedan marcadas en el minimapa (breve)
+REVEAL_T_READER = 4.0                  # 1.ª mejora (Leer la cueva, desde el Acto II): se quedan un poco más
+GUIDE_T = 1.8                          # segundos que se ven las flechas rosas después de un grito
 ECHO_FLASH_T = 0.9                     # destello de ecolocación alrededor de Mullo
 
 # --- Impulso -----------------------------------------------------------
 DASH_SPEED = 640
 DASH_T = 0.2
 DASH_CD = 2.8
+DASH_CD_AIR = 1.8                      # 3.ª mejora (Vuelo con la corriente): recarga dentro de la corriente de la mina
 
 # --- Escudo ------------------------------------------------------------
 SHIELD_T = 5.0                         # segundos de duración

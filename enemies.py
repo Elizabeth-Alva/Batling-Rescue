@@ -4,7 +4,7 @@ Arañas: lentas, patrullan cerca de sus telarañas. El grito las aturde y las da
 Escarabajos: acorazados y tercos; oyen los chillidos y van a investigar. Aguantan más.
 Cazadores (ciempiés): rápidos, cazan con el oído; te persiguen al verte y pierden el rastro si te alejas.
    El grito solo los aturde un momento.
-Jefe (Gran Ciempiés de la Mina): gigante, no se puede vencer. Solo se puede huir.
+Jefe (Xolthar, el Gran Ciempiés de la Mina): territorial, no cruel; no se puede vencer, solo esquivar.
 """
 import math
 import random
@@ -20,7 +20,7 @@ SPECS = {
     'hunter': dict(spd=1.55, hear=2.2, det=1.35, hp=3, rad=13, size=1.0, dmg=1, stun=.3, push=.7, lose=1.3, leash=None),
     'boss':   dict(spd=1.0, hear=0.0, det=0.0, hp=10 ** 9, rad=40, size=3.0, dmg=2, stun=.12, push=0.0, lose=99, leash=None),
 }
-NAMES = {'spider': 'araña', 'beetle': 'escarabajo', 'hunter': 'cazador', 'boss': 'Gran Ciempiés'}
+NAMES = {'spider': 'araña', 'beetle': 'escarabajo', 'hunter': 'cazador', 'boss': 'Xolthar'}
 BOSS_SPEED = 178          # más lento que Mullo cargando crías (211) y mucho más que el impulso
 BOSS_WAKE_T = 1.6        # tarda en despertar del todo: Mullo tiene un instante para huir
 MAX_HUNTERS = 3
@@ -168,7 +168,8 @@ class Enemy:
 
 
 class Boss(Enemy):
-    """El Gran Ciempiés de la Mina: duerme junto a la vagoneta y despierta cuando Mullo toma a las gemelas."""
+    """Xolthar, el Gran Ciempiés de la Mina: duerme enroscado junto a las vagonetas y despierta cuando Mullo toma
+    a las gemelas. En cuanto ella las deja en el nido, regresa a su guarida y se vuelve a dormir."""
 
     def __init__(self, x, y):
         super().__init__(x, y, 'boss')

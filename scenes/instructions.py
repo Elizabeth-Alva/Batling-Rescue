@@ -9,25 +9,25 @@ from settings import W, H, C_PURPLE, C_GREEN, C_GOLD, C_PUP
 
 ENTRIES = [
     ('bat', 'Volar y rescatar', 'WASD / Flechas',
-     'Eres Mullo. Lleva a cada cría al punto de entrega (brillo dorado, arriba). Sigue chillidos y rastros.'),
+     'Eres Mullo. Lleva a cada cría al nido (brillo dorado, arriba): ahí nadie entra y recuperas una vida.'),
     ('screech', 'Grito sónico', 'Espacio o clic izq.',
-     'Aturde y daña a los cercanos, rompe telarañas y MARCA A LAS CRÍAS EN EL MINIMAPA. Tarda en recargarse.'),
+     'Aturde a los bichos, rompe telarañas y MARCA A LAS CRÍAS EN EL MINIMAPA. Pero hace ruido.'),
     ('dash', 'Impulso', 'Shift',
      'Un empujón veloz para escapar o cruzar tramos abiertos. También se recarga.'),
     ('shield', 'Escudo', 'E o clic derecho',
      '5 segundos sin recibir daño; repele a quien te toque. Luego hay que esperar.'),
     ('map', 'Minimapa', 'Siempre visible · M amplía',
-     'Muestra lo explorado, el punto de entrega y las crías que marcó tu último grito.'),
+     'Es la memoria de Mullo: lo explorado, el nido y las crías que marcó tu último grito.'),
     ('enemies', 'Arañas, escarabajos y cazadores', 'Oyen los chillidos',
-     'No son malvados: tienen hambre. Chocar con la roca hace ruido. Nadie entra al punto de entrega.'),
+     'No son malvados: tienen hambre. Chocar con la roca hace ruido. Ningún bicho cruza el agua.'),
     ('dawn', 'Antes del amanecer', '3 actos · 10 crías',
-     'Cada nivel tiene su reloj. Al amanecer la colonia se va, con Mullo o sin ella.'),
+     'Cada nivel tiene su reloj. Antes del amanecer la colonia se va, con Mullo o sin ella.'),
 ]
 
 
 def icon(s, kind, cx, cy, t):
     if kind == 'bat':
-        ui.draw_bat(s, cx, cy + 2, t * 9, .8)
+        ui.draw_mullo(s, cx, cy + 2, t * 9, .8)
     elif kind == 'shield':
         r = 24 + int(2 * math.sin(t * 8))
         pygame.draw.circle(s, (40, 80, 110), (cx, cy), r)
@@ -90,4 +90,8 @@ class InstructionsScene(Scene):
             ui.text(screen, ui.F_XS, keys, 160 + ui.F_S.size(head)[0] + 16, y + 3, C_GREEN)
             ui.text(screen, ui.F_XS, desc, 160, y + 26, (190, 180, 210))
             y += 66
-        ui.text(screen, ui.F_XS, 'P / Esc: pausa   ·   B: brillo de la cueva   ·   Pulsa Esc o Enter para volver', W // 2, H - 36, (200, 190, 225), True)
+        if getattr(self.game, 'touch', None) and self.game.touch.active:
+            ui.text(screen, ui.F_XS, 'En el teléfono: joystick a la izquierda · GRITO, IMPULSO y ESCUDO a la derecha · Toca para volver',
+                    W // 2, H - 36, (200, 190, 225), True)
+        else:
+            ui.text(screen, ui.F_XS, 'P / Esc: pausa   ·   B: brillo de la cueva   ·   Pulsa Esc o Enter para volver', W // 2, H - 36, (200, 190, 225), True)

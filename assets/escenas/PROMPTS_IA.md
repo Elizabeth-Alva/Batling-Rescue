@@ -18,6 +18,20 @@ Dejen "aire" arriba (~75 px) y abajo (~110 px), porque ahí van las franjas de c
 > con ojitos rosados. Tono apto para 10+ años: tenso pero tierno, sin sangre ni violencia.
 > Composición horizontal 3:2, sin texto.
 
+### Rasgos de los personajes (agrega el que aparezca en la escena)
+
+- **Abuela Canela:** murciélaga anciana, un poco más grande que Mullo, pelaje gris canela y hocico canoso,
+  una muesca en la oreja izquierda, alas con cicatrices pequeñas, ojos ámbar opacos. Planea más de lo que
+  aletea; en reposo cuelga boca abajo con las alas cerradas, como los murciélagos reales.
+- **Chispa:** cría redonda y diminuta, pelaje violeta rosado, ojos grandes y un mechón naranja en la cabeza.
+- **Xolthar, el Gran Ciempiés:** ciempiés enorme de dieciséis segmentos, coraza negra con vetas rojas, púas,
+  patas articuladas y mandíbulas grandes; despierto, ojos rojos y un brillo rojo. Formas angulosas (peligro),
+  nunca sangre.
+- **Piel vieja de Xolthar:** la muda vacía del ciempiés, una silueta pálida y quieta, tan larga como una vagoneta.
+
+Las formas dicen quién es quién: Mullo, Canela y las crías son redondas y de ojos cálidos; los ciempiés son
+angulosos, con púas y ojos rojos. Paleta por acto: verde de hongos (I), azul índigo (II), café ámbar (III).
+
 Para que **no se exagere el alcance del juego**: pidan siempre siluetas y luz ambiental (como en el juego),
 no escenas hiperdetalladas ni personajes en 3D. Si la imagen se ve mucho más "rica" que el juego, bájenle con
 "minimalista, pocas formas, paleta limitada".
@@ -26,19 +40,24 @@ no escenas hiperdetalladas ni personajes en 3D. Si la imagen se ve mucho más "r
 
 | Archivo | Escena | Prompt (después del estilo común) |
 |---|---|---|
-| `dusk.png` | Prólogo 1 | Atardecer de sequía en un paisaje árido con tierra agrietada y un árbol seco; a la derecha un acantilado con la boca de una cueva; una nube de murciélagos sale de ella; Mullo vuela hacia la izquierda, lejos. Cielo violeta a naranja, sol bajo. |
-| `leaving.png` | Prólogo 2 | Vista desde dentro de la cueva hacia la salida: el borde de roca enmarca un cielo violeta; en primer plano un nido de ramitas con 10 crías con ojitos rosados; Mullo se aleja volando hacia la salida. |
+| `dusk.png` | Prólogo 1 | Atardecer de sequía en un paisaje árido con tierra agrietada y un árbol seco; a la derecha un acantilado con la boca de una cueva; una nube de murciélagos sale a cazar; Mullo da vueltas cerca del acantilado buscando comida. Cielo violeta a naranja, sol bajo. |
+| `canela.png` | Prólogo 2 | Dentro de la cueva, junto a la boca que enmarca un atardecer naranja: la Abuela Canela cuelga boca abajo con las alas cerradas y habla a la colonia; varios murciélagos cuelgan del techo y otros salen volando; Mullo la escucha a un lado. |
+| `goodbye.png` | Prólogo 4 | Desde dentro de la cueva, cielo violeta en la salida; Mullo flota en el borde de un nido de ramitas con 10 crías que la miran (una con mechón naranja); al fondo, en la roca, la Abuela Canela colgada. |
+| `advice.png` | Prólogo 3 | La Abuela Canela, colgada del techo de roca, habla a toda la colonia (muchos murciélagos colgados escuchan); Mullo, en primer plano, escucha con atención; rizos de aire suben hacia la salida y muy al fondo un brillo rojo apenas visible. |
+| `leaving.png` | Prólogo 5 | Afuera de la cueva al anochecer: acantilado con la boca de la cueva, campo seco y agrietado, árbol seco, luna creciente y primeras estrellas; Mullo sale volando de la boca y se aleja, mirando una vez hacia atrás. |
 | `empty_nest.png` | Acto I · inicio | Interior de cueva a medianoche, una abertura arriba a la izquierda deja ver una luna creciente y cielo azul oscuro; un haz de luna cae sobre un nido vacío; marcas de garras bajan hacia la oscuridad; Mullo aterriza. |
 | `debate.png` | Acto I · debate | Mullo en el borde del nido mirando hacia abajo, a un abismo oscuro con puntos de hongos verdes luminosos muy lejos; una onda rosada de sonido sube desde el fondo. |
 | `nest_three.png` | Primer punto de giro 1 | El nido con tres crías dormidas; Mullo a un lado, de pie; ondas de sonido rosadas vienen desde abajo de la escena. Cielo de la abertura más violeta. |
 | `descent.png` | Primer punto de giro 2 | Pozo vertical de roca; Mullo se lanza en picada hacia abajo; arriba hongos verdes azulados, abajo un brillo azul índigo de un lago. |
 | `lake.png` | Acto II · inicio | Lago subterráneo negro y quieto con islotes de roca y niebla baja; algas verdes que brillan débilmente en la orilla; Mullo vuela bajo, su reflejo en el agua; ojos naranjas de escarabajos en la orilla. Azul índigo casi negro. |
-| `echo_room.png` | Segundo punto de giro 1 | La Sala del Eco: una isla central en el lago, ondas de eco concéntricas que se deforman; Mullo y una cría pequeña (Eco) frente a frente sobre la isla. Brillo violeta. |
-| `mine_gate.png` | Segundo punto de giro 2 | Entrada a una mina abandonada dentro de la cueva: marcos de madera en perspectiva, rieles oxidados, lámparas apagadas, tres pares de ojos rojos en la oscuridad; Mullo entra. Marrón y ámbar. |
-| `mine.png` | Acto III · inicio | Túnel de mina abandonada en perspectiva, vigas de madera, rieles, una vagoneta oxidada, polvo flotando con luz ámbar muy tenue; Mullo vuela por el túnel. |
-| `dawn_nest.png` | Resolución 1 | Boca de la cueva al amanecer, cielo naranja y dorado; la colonia empieza a salir en una cinta de murciélagos; en el borde, el nido con 10 crías que dudan; Mullo cerca. |
-| `true_voice.png` | Resolución 2 | Mullo al centro con las alas abiertas, ondas doradas y limpias salen de ella; alrededor ecos grises y deformes que se desvanecen; abajo, 10 crías en fila levantan la cabeza con ojitos encendidos. Fondo cálido. |
-| `departure.png` | Imagen final | Paisaje al amanecer con el sol saliendo; una larga cinta de murciélagos sale del acantilado hacia el horizonte; Mullo vuela entre ellos con 10 crías pequeñas detrás. |
+| `near_dawn.png` | Segundo punto de giro 1 | Techo de roca con una grieta por donde entra la primera luz gris del amanecer; Mullo vuela mirando la luz: ya casi amanece. |
+| `mine_gate.png` | Segundo punto de giro 2 | Entrada a una mina abandonada dentro de la cueva: marcos de madera en perspectiva, rieles oxidados, lámparas apagadas, tres pares de ojos rojos en la oscuridad; en el suelo, junto a los rieles, la piel vieja de un ciempiés gigante, pálida y vacía, tan larga como una vagoneta; Mullo se detiene a mirarla. Marrón y ámbar. |
+| `mine.png` | Acto III · inicio 1 | Túnel de mina abandonada en perspectiva, vigas de madera, rieles, una vagoneta oxidada, polvo flotando con luz ámbar muy tenue; Mullo vuela por el túnel. |
+| `recall.png` | Acto III · inicio 2 | En el túnel de la mina, rizos de aire fresco corren hacia la salida; Mullo flota pensativa y, en un recuerdo luminoso y translúcido, aparece la Abuela Canela colgada hablando. |
+| `escape.png` | Clímax | Túnel de mina hacia una luz cálida; Mullo vuela con dos crías gemelas; la corriente de aire la empuja hacia la salida; detrás, abajo, la cabeza de Xolthar con ojos rojos y mandíbulas abiertas. |
+| `dawn_nest.png` | Resolución 1 | Boca de la cueva antes del amanecer, cielo naranja y dorado; la colonia empieza a salir en una cinta de murciélagos; la Abuela Canela cuelga en el borde de la boca, la última en irse; en el suelo, el nido con 10 crías que dudan; Mullo llega volando. |
+| `true_voice.png` | Resolución 2 | Mullo al centro con las alas abiertas, ondas doradas y limpias salen de ella; alrededor ecos grises y deformes que se desvanecen; abajo, 10 crías en fila; la del centro (Chispa, mechón naranja) contesta primero con una onda rosada. Fondo cálido. |
+| `departure.png` | Imagen final | Paisaje al amanecer con el sol saliendo; una larga cinta de murciélagos sale del acantilado hacia el horizonte; Mullo vuela con 10 crías pequeñas detrás y la Abuela Canela planea cerca. |
 
 ## Portada (opcional)
 

@@ -4,6 +4,9 @@ Escritorio:  pip install pygame  y  python main.py
 Navegador:   se compila con pygbag (ver tools/build_web.py y LEEME.txt).
 Todo (gráficos y sonidos) se genera por código; no necesita archivos externos."""
 import asyncio
+import os
+
+os.environ.setdefault("SDL_TOUCH_MOUSE_EVENTS", "0")      # los toques no se duplican como clics (los convierte game.py)
 
 import pygame
 

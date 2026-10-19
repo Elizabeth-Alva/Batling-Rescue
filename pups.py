@@ -30,7 +30,7 @@ class Pup:
         self.revealed = 0.0                  # tiempo restante marcada en el minimapa (por el grito)
         self.wander = None                   # destino de la cría inquieta / asustadiza
         self.wander_t = random.uniform(3, 7)
-        self.say_t = random.uniform(2, 5)    # Eco repite la frase de su madre
+        self.say_t = random.uniform(2, 5)    # junto a Eco se oye el susurro de la Sala del Eco
         self.found = False                   # el jugador ya la vio de cerca (muestra su nombre)
         # animación: se mueven un poquito (pasitos, brincos y aleteos), no se quedan estáticas
         self.hop = 0.0                       # brinco en curso (s restantes)
@@ -59,7 +59,7 @@ class Pup:
         self.flap += dt * (22 if self.hop > 0 or carried else 5)
         if carried:
             return
-        if self.behavior == 'eco':                       # repite la frase de su madre (se oye, no se lee)
+        if self.behavior == 'eco':                       # la Sala del Eco: la cueva suena parecido a Mullo
             self.say_t -= dt
             if self.say_t <= 0:
                 self.say_t = random.uniform(5, 8)
