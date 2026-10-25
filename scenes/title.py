@@ -1,10 +1,9 @@
-"""Portada con menú: Jugar / Instrucciones / Salir."""
+"""Portada con menú: Jugar / Instrucciones / Salir. El fondo es la cueva real del juego (title_cave.py)."""
 import math
 
 import pygame
 
 import ui
-from art import Cover
 from scenes import Scene
 from settings import IS_WEB, W, H
 
@@ -31,7 +30,12 @@ def _logo_parts():
     return _LOGO
 
 
-def draw_logo(s, t, cy=86):
+LOGO_W = 390                                                  # ancho del logo en la portada
+LOGO_CY = 214                                                 # centro vertical del logo
+
+
+def draw_text_logo(s, t, cy=86):
+    """Respaldo por código si falta assets/logo.png."""
     L = _logo_parts()
     pulse = .55 + .45 * math.sin(t * 2.2)
     cx = W // 2
@@ -44,13 +48,50 @@ def draw_logo(s, t, cy=86):
     s.blit(L['sub'], L['sub'].get_rect(center=(cx, cy + 74)))
 
 
+def draw_logo(s, t, cy=LOGO_CY, width=LOGO_W):
+    """Logo oficial de BATling Rescue, fijo sobre la cueva."""
+    img = ui.logo(width)
+    if img is None:
+        draw_text_logo(s, t)
+        return False
+    s.blit(img, img.get_rect(center=(W // 2, cy)))            # fijo: moverlo de a píxel entero se ve a saltos
+    return True
+
+
+_SHADE = {}
+
+
+def _text_shade(w, h):
+    """Penumbra suave detrás del lema para que se lea sobre la cueva."""
+    k = (w, h)
+    if k not in _SHADE:
+        sh = pygame.Surface((w, h), pygame.SRCALPHA)
+        for i in range(h // 2, 0, -1):
+            a = int(150 * (1 - i / (h / 2)) ** .8)
+            pygame.draw.ellipse(sh, (0, 0, 0, a), (w / 2 - i * w / h, h / 2 - i, 2 * i * w / h, 2 * i))
+        _SHADE[k] = sh
+    return _SHADE[k]
+
+
 def draw_cover(s, t, cover, tagline=True):
     """Portada completa (también se exporta como imagen con tools/make_cover.py)."""
-    cover.draw(s, t, mullo_y=372)
-    draw_logo(s, t)
+    cover.draw(s, t)
+    has_logo = draw_logo(s, t)
     if tagline:
-        ui.text(s, ui.F_S, 'Una madre. Diez crías. Una sola noche.', W // 2, 196, (255, 236, 210), True)
-        ui.text(s, ui.F_XS, '¿El amor puede más que el miedo?', W // 2, 220, (210, 190, 245), True)
+        y = LOGO_CY + 212 if has_logo else 196
+        sh = _text_shade(560, 90)
+        s.blit(sh, (W // 2 - 280, y - 33))
+        ui.text(s, ui.F_S, 'Una madre. Diez crías. Una sola noche.', W // 2, y, (255, 236, 210), True)
+        ui.text(s, ui.F_XS, '¿El amor puede más que el miedo?', W // 2, y + 24, (210, 190, 245), True)
+
+
+def title_cave(game):
+    """La cueva de la portada se genera una sola vez por partida (siempre la misma)."""
+    cv = getattr(game, 'title_cave', None)
+    if cv is None:
+        from title_cave import TitleCave
+        cv = game.title_cave = TitleCave()
+    return cv
 
 
 class TitleScene(Scene):
@@ -59,14 +100,15 @@ class TitleScene(Scene):
         self.main = ['Jugar', 'Instrucciones'] + ([] if IS_WEB else ['Salir'])
         self.menu = ui.Menu(self.main, W // 2, 566, gap=236, w=220, h=44, horizontal=True)
         self.t = 0.0
-        self.cover = Cover()
+        self.cover = title_cave(game)
+        self.dt = 1 / 60
         self.panel = pygame.Surface((W, 92), pygame.SRCALPHA)
         for y in range(92):
             self.panel.fill((0, 0, 0, int(200 * (y / 92) ** .7)), (0, y, W, 1))
 
     def enter(self):
         self.game.sounds.stop()
-        self.game.sounds.ambient(.3)
+        self.game.sounds.ambient(.3, 'amb_fungi')
 
     def handle(self, ev):
         if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
@@ -83,9 +125,11 @@ class TitleScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        self.dt = dt
+        self.cover.update(dt)
 
     def draw(self, screen):
-        draw_cover(screen, self.t, self.cover)
+        draw_cover(screen, self.cover.t, self.cover)
         screen.blit(self.panel, (0, H - 92))
-        self.menu.draw(screen, 1 / 60)
+        self.menu.draw(screen, self.dt)
         ui.text(screen, ui.F_XS, '← → Elegir        Enter → Aceptar', W // 2, H - 14, (170, 155, 200), True)

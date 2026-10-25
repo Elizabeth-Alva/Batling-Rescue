@@ -10,7 +10,9 @@ from settings import C_PUP
 FLEES = ('asustadiza', 'inquieta')
 FLEE_SEE = 200                          # a qué distancia notan a un bicho
 FLEE_LEASH = 150                        # no se alejan demasiado de su sitio (para que Mullo las encuentre)
-INTERVAL_MULT = {'dormilona': 1.8, 'llorona': .6, 'inquieta': 1.0, 'asustadiza': 1.0, 'eco': 1.2, 'gemelas': .8}
+INTERVAL_MULT = {'dormilona': 1.8, 'ratos': 1.0, 'llorona': .6, 'inquieta': 1.0, 'asustadiza': 1.0, 'eco': 1.2, 'gemelas': .8}
+NAP_T = (5.0, 8.0)                      # Mora duerme a ratos: segundos dormida...
+AWAKE_T = (4.0, 6.5)                    # ...y segundos despierta (solo chilla despierta)
 
 
 def _blocked(cave, x, y):
@@ -39,6 +41,8 @@ class Pup:
         self.step = None
         self.lean = 0.0
         self.scared = 0.0                    # > 0 mientras huye de un bicho
+        self.asleep = behavior == 'dormilona'                   # Mora ('ratos') alterna dormida / despierta
+        self.nap_t = random.uniform(*AWAKE_T)
 
     def update(self, dt, g):
         b = g.bat
@@ -48,7 +52,18 @@ class Pup:
         self.revealed = max(0, self.revealed - dt)
         if not self.found and math.dist((self.x, self.y), (b.x, b.y)) < 170:
             self.found = True
-        if self.t <= 0:
+        if self.behavior == 'ratos' and not carried:    # duerme a ratos
+            self.nap_t -= dt
+            if self.nap_t <= 0:
+                self.asleep = not self.asleep
+                self.nap_t = random.uniform(*(NAP_T if self.asleep else AWAKE_T))
+                if not self.asleep:
+                    self.t = min(self.t, .4)             # al despertar chilla enseguida
+        elif carried:
+            self.asleep = self.behavior == 'dormilona'
+        if self.t <= 0 and self.asleep and self.behavior == 'ratos':
+            self.t = .5                                  # dormida no chilla (y no atrae a los bichos)
+        elif self.t <= 0:
             p = g.diff
             self.t = p.pup_interval * INTERVAL_MULT.get(self.behavior, 1) * random.uniform(.8, 1.2) * (.7 if carried else 1)
             self.ping = 2.2

@@ -520,8 +520,11 @@ class Dusk(Shot):
         L['ground'] = ground
         L['cache'] = {}
 
+    k0, k1 = 0.0, 1.0                                                  # avance del atardecer en la toma
+    canela = True
+
     def draw(self, s, t, dur):
-        k = t / max(1, dur)
+        k = self.k0 + (self.k1 - self.k0) * min(1, t / max(1, dur))
         sky = _sky([(0, (60, 30, 90)), (.5, (200, 90, 90)), (.8, (255, 160, 90)), (1, (255, 190, 120))],
                    [(0, (24, 16, 60)), (.5, (110, 50, 100)), (.8, (200, 90, 80)), (1, (230, 120, 80))], k, self.layers['cache'], 'd')
         s.blit(sky, (0, 0))
@@ -531,13 +534,34 @@ class Dusk(Shot):
         s.blit(self.layers['far'], (-int(t * 3), 0))
         s.blit(self.layers['far'], (W - int(t * 3), 0))
         s.blit(self.layers['mid'], (0, 0))
-        colony(s, t, 560, 190, 30, (170, 60), 8, (12, 6, 14), .3)
+        self.flock(s, t)
         s.blit(self.layers['cliff'], (0, 0))
         s.blit(self.layers['ground'], (0, 0))
         a = t * .55                                                     # Mullo busca comida cerca... y no encuentra
         x, y = 560 + math.cos(a) * 230, 300 + math.sin(a * 1.6) * 70
-        canela_sil(s, 200 + 90 * math.sin(t * .18), 150 + 24 * math.sin(t * .36), t, 1.6)       # la Abuela también caza
+        if self.canela:
+            canela_sil(s, 200 + 90 * math.sin(t * .18), 150 + 24 * math.sin(t * .36), t, 1.6)   # vuela despacio, planea
         bat_sil(s, x, y, t * 9, 1.15 + .2 * math.sin(a), MULLO_COL, MULLO_RIM, MULLO_EYES, ang=.25 * math.sin(a))
+        self.extra(s, t, x, y)
+
+    def flock(self, s, t):
+        colony(s, t, 560, 190, 30, (170, 60), 8, (12, 6, 14), .3)       # la colonia sale junta, sin dispersarse
+
+    def extra(self, s, t, x, y):
+        pass
+
+
+class Search(Dusk):
+    """Mullo busca alimento cerca de la cueva y no encuentra nada: la colonia ya se alejó y el cielo se apaga."""
+    k0, k1 = .55, .9
+    canela = False
+
+    def flock(self, s, t):
+        colony(s, t, 150, 210, 14, (90, 30), 21, (14, 8, 16), .16)       # la colonia, ya lejos
+
+    def extra(self, s, t, x, y):
+        q = (t * .55) % 1                                                # olfatea / ecolocaliza: ondas que vuelven vacías
+        pygame.draw.circle(s, lerp((210, 190, 255), (40, 20, 50), q), (int(x), int(y)), int(10 + 120 * q), 1)
 
 
 class NestView(Shot):
@@ -627,19 +651,23 @@ class Outside(Shot):
 
 
 class CanelaShot(Outside):
-    """Afuera, buscando comida con todas: la Abuela Canela planea despacio y avisa que se van antes del amanecer."""
+    """La Abuela Canela, colgada boca abajo con las alas cerradas en el árbol seco, avisa que no hay comida y que
+    antes del amanecer se mudan; la colonia la escucha y empieza a salir a cazar."""
+    tree = (60, 640, 1.9)
 
     def draw(self, s, t, dur):
+        L = self.layers
         self.back(s, t, dur)
-        colony(s, t, 520, 220, 22, (260, 70), 31, (34, 16, 26), .3)            # la colonia caza (sin las crías)
-        for i, (px, py) in enumerate(self.layers['perches'][3:]):             # algunas descansan en la rama
-            _hanging_bat(s, px, py + 2, .8, t + i, (30, 16, 24), (190, 110, 90))
-        cx = 420 + 120 * math.sin(t * .22)                                     # planea en círculos amplios
-        cy = 250 + 26 * math.sin(t * .44)
-        canela_sil(s, cx, cy, t, 2.3)
-        bat_sil(s, cx + 230, cy + 80 + 8 * math.sin(t * 2), t * 11, 1.5, MULLO_COL, MULLO_RIM, MULLO_EYES, ang=-.15)
-
-
+        colony(s, t, 640, 200, 18, (200, 60), 31, (34, 16, 26), .26)            # las demás ya salen a cazar
+        perches = L['perches']
+        for i, (px, py) in enumerate(perches):
+            if i in (1, 3):
+                continue
+            _hanging_bat(s, px, py, 1.25, t + i * 1.7, (34, 18, 26), (210, 130, 100))
+        bx, by = perches[1]
+        canela_sil(s, bx, by - 4, t, 3.0, hang=True, talk=True, look=.4, perch=None)
+        mx, my = perches[3]
+        hanging_mullo(s, mx, my, t, 1.55, max(0, math.sin(t * 1.1)) ** 6)
 
 
 def _hanging_bat(s, x, y, sc, t, col=(22, 14, 22), rim=(110, 70, 80)):
@@ -751,7 +779,7 @@ class Advice(Outside):
     def draw(self, s, t, dur):
         L = self.layers
         self.back(s, t, dur)
-        air_wisps(s, t, 3, 12, (300, 160, 600, 300), (.9, .3), (250, 220, 200), 40)   # el aire sabe salir
+        air_wisps(s, t, 3, 12, (300, 160, 600, 300), (.9, .3), (250, 220, 200), 40)   # el aire debe salir
         perches = L['perches']
         for i, (px, py) in enumerate(perches):
             if i in (1, 3):
@@ -1229,8 +1257,9 @@ class EchoRoom(Shot):
 
 
 class Mine(Shot):
-    """Mina Vieja: vigas que se alejan, rieles, vagonetas, lámparas apagadas, polvo ámbar."""
-    gate = False
+    """Mina Vieja: vigas que se alejan, rieles, vagonetas, lámparas apagadas, polvo ámbar y, al fondo, los ojos
+    rojos de los cazadores (en la oscuridad solo se les ven los ojos)."""
+    gate = True
 
     def build(self):
         L = self.layers
@@ -1301,31 +1330,6 @@ class MineGate(Mine):
         p = min(1, t / 3.5)
         e = p * p * (3 - 2 * p)                                           # llega y se detiene a mirarla
         bat_sil(s, 760 - 210 * e, 230 + 120 * e + 6 * math.sin(t * 2), t * (9 if p < 1 else 6), 1.5 - .3 * e, MULLO_COL, MULLO_RIM, MULLO_EYES, ang=.25 * e)
-
-
-class Recall(Mine):
-    """«Sigue el aire»: en la mina, una corriente fresca y el recuerdo de la voz de la Abuela."""
-
-    def build(self):
-        super().build()
-        self.layers['memory'] = glow(150, (140, 90, 60), .7, 1.4)
-        self.layers['bubble'] = pygame.Surface((300, 300), pygame.SRCALPHA)
-
-    def floor_extra(self, s, t, dur):
-        air_wisps(s, t, 31, 26, (0, 120, W, 440), (-.9, -.42), (230, 214, 190), 70)
-
-    def mullo(self, s, t, dur):
-        L = self.layers
-        k = min(1, max(0, (t - .8) / 1.5))                                # el recuerdo aparece despacio
-        if k > 0:
-            s.blit(L['memory'], (220 - 150, 170 - 150), special_flags=pygame.BLEND_RGB_ADD)
-            b = L['bubble']
-            b.fill((0, 0, 0, 0))
-            canela_sil(b, 150, 70, t, 2.0, (250, 200, 150), hang=True, talk=t < 6, look=.8)
-            b.set_alpha(int(170 * k * (.85 + .15 * math.sin(t * 2))))
-            s.blit(b, (220 - 150, 170 - 120))
-        bat_sil(s, 590 + 10 * math.sin(t * .8), 330 + 8 * math.sin(t * 2), t * 7, 1.9, MULLO_COL, MULLO_RIM, MULLO_EYES,
-                ang=-.18 + .05 * math.sin(t))
 
 
 class DawnNest(Shot):
@@ -1427,7 +1431,7 @@ class TrueVoice(Shot):
 
 
 class Departure(Shot):
-    """Imagen final: la colonia sale hacia su nuevo refugio; Mullo con sus diez crías cerca."""
+    """Imagen final: antes del amanecer la colonia parte completa hacia su nuevo refugio; Mullo con sus diez crías."""
 
     def build(self):
         L = self.layers
@@ -1443,9 +1447,8 @@ class Departure(Shot):
     def draw(self, s, t, dur):
         L = self.layers
         s.blit(L['sky'], (0, 0))
-        sy = 470 - t * 10
+        sy = 560 - min(t, 40) * 1.5                                        # antes del amanecer: el sol aún no sale
         s.blit(L['sun'], (640 - 260, sy - 260), special_flags=pygame.BLEND_RGB_ADD)
-        pygame.draw.circle(s, (255, 230, 170), (640, int(sy)), 54)
         s.blit(L['far'], (0, 0))
         s.blit(L['mid'], (0, 0))
         colony(s, t, 200, 400, 60, (80, 40), 6, (30, 14, 18), .3, stream=1.0, dirx=1)
@@ -1559,30 +1562,6 @@ class LowPoint(Shot):
         pygame.draw.circle(s, (120, 130, 200), (520, int(170 + d * 330)), 2)
 
 
-class NearDawn(LowPoint):
-    """Ya casi va a amanecer: por una grieta del techo entra la primera luz gris y Mullo la mira mientras vuela."""
-
-    def draw(self, s, t, dur):
-        L = self.layers
-        s.blit(L['bg'], (0, 0))
-        s.blit(L['water'], (0, 0))
-        k = min(1, t / 5)                                                 # la luz crece poco a poco
-        beam = L['beam'].copy()
-        beam.set_alpha(int(150 + 105 * k))
-        s.blit(beam, (0, 0))
-        s.blit(L['roof'], (0, 0))
-        c = lerp((200, 200, 220), (255, 214, 170), k)                     # la grieta se entibia hacia el amanecer
-        pygame.draw.line(s, c, (612, 132), (638, 132), 2 + int(2 * k))
-        for i in range(10):                                               # polvito en la luz
-            q = (t * .12 + i * .1) % 1
-            px = 625 - (625 - 400) * q + math.sin(t + i) * 10
-            pygame.draw.circle(s, lerp((60, 60, 80), (230, 220, 210), .5 + .5 * math.sin(t * 2 + i)), (int(px), int(140 + 400 * q)), 1)
-        x, y = 300 + 30 * math.sin(t * .6), 360 + 14 * math.sin(t * 1.4)
-        bat_sil(s, x, y, t * 10, 1.6, MULLO_COL, MULLO_RIM, MULLO_EYES, ang=-.35)    # mira hacia la luz
-        d = (t * .8) % 1
-        pygame.draw.circle(s, (120, 130, 200), (520, int(170 + d * 330)), 2)
-
-
 class MineFar(Lake):
     """Desde el lago se ve la boca de la mina; de ahí vienen los últimos chillidos."""
 
@@ -1625,7 +1604,8 @@ SHOTS = {'gallery': Gallery, 'whisper': Whisper, 'low_point': LowPoint, 'mine_fa
          'dusk': Dusk, 'leaving': Leaving, 'empty_nest': EmptyNest, 'debate': Debate, 'nest_three': NestThree,
          'descent': Descent, 'lake': Lake, 'echo_room': EchoRoom, 'mine_gate': MineGate, 'mine': Mine,
          'dawn_nest': DawnNest, 'true_voice': TrueVoice, 'departure': Departure,
-         'canela': CanelaShot, 'goodbye': Goodbye, 'advice': Advice, 'tale': Tale, 'return_nest': ReturnNest, 'recall': Recall, 'near_dawn': NearDawn}
+         'canela': CanelaShot, 'goodbye': Goodbye, 'advice': Advice, 'tale': Tale, 'return_nest': ReturnNest,
+         'search': Search}
 
 
 class ImageShot(Shot):
@@ -1656,49 +1636,3 @@ def make_shot(key):
             except Exception:
                 break
     return SHOTS[key]()
-
-
-# ------------------------------------------------------------------ portada
-class Cover:
-    """Portada animada: la boca de la cueva enmarca un cielo de madrugada, la colonia, y Mullo al frente."""
-
-    def __init__(self):
-        self.sky = gradient(W, H, [(0, (8, 8, 30)), (.45, (40, 22, 80)), (.7, (130, 60, 110)), (.85, (240, 120, 80)), (1, (255, 180, 110))])
-        self.stars = stars(110, 77, (W, 330))
-        self.moon = glow(120, (150, 140, 255), .6)
-        self.far = ridge(W, H, 470, 40, (54, 28, 64), 61)
-        self.frame = cave_mouth_frame(W, H, (W / 2, 300, 420, 260), (6, 4, 10), (90, 60, 120), 66)
-        self.floor = ridge(W, H, 560, 26, (5, 3, 8), 67)
-        rnd = random.Random(70)
-        self.fungi = [(rnd.choice((rnd.uniform(20, 200), rnd.uniform(W - 200, W - 20))), rnd.uniform(380, H - 20), rnd.uniform(3, 7))
-                      for _ in range(26)]
-        self.fglow = glow(40, (40, 220, 170), .8)
-        self.pups = [(rnd.choice((rnd.uniform(30, 230), rnd.uniform(W - 230, W - 30))), rnd.uniform(470, 535), rnd.uniform(0, TAU))
-                     for _ in range(10)]
-        self.mullo_glow = glow(220, (120, 80, 220), .55)
-
-    def draw(self, s, t, mullo_y=360):
-        s.blit(self.sky, (0, 0))
-        draw_stars(s, self.stars, t)
-        s.blit(self.moon, (W // 2 + 290 - 120, 250 - 120), special_flags=pygame.BLEND_RGB_ADD)
-        pygame.draw.circle(s, (235, 232, 255), (W // 2 + 290, 250), 24)
-        pygame.draw.circle(s, self.sky.get_at((W // 2 + 280, 240)), (W // 2 + 279, 243), 22)
-        s.blit(self.far, (0, 0))
-        colony(s, t * .8, W / 2, 250, 30, (300, 80), 4, (14, 8, 22), .26)
-        for k in range(3):                                                      # ondas de ecolocación
-            p = ((t * .35 + k / 3) % 1)
-            pygame.draw.circle(s, lerp((150, 130, 255), (8, 6, 20), p), (W // 2, mullo_y), int(60 + 520 * p), 2)
-        s.blit(self.frame, (0, 0))
-        for x, y, r in self.fungi:
-            k = .6 + .4 * math.sin(t * 1.5 + x)
-            s.blit(self.fglow, (x - 40, y - 40), special_flags=pygame.BLEND_RGB_ADD)
-            pygame.draw.circle(s, (int(30 * k), int(150 * k), int(120 * k)), (int(x), int(y)), int(r))
-            pygame.draw.circle(s, (120, 255, 210), (int(x - r / 3), int(y - r / 3)), max(1, int(r / 3)))
-        s.blit(self.floor, (0, 0))
-        for x, y, ph in self.pups:                                              # diez pares de ojitos en la oscuridad
-            if (t * .6 + ph) % 4 < 3.7:
-                for sd in (-3, 3):
-                    pygame.draw.circle(s, (255, 150, 210), (int(x + sd), int(y)), 2)
-        s.blit(self.mullo_glow, (W // 2 - 220, mullo_y - 220), special_flags=pygame.BLEND_RGB_ADD)
-        bob = math.sin(t * 1.6) * 8
-        bat_sil(s, W // 2, mullo_y + bob, 1.1 + .35 * math.sin(t * 3.2), 3.4, MULLO_COL, MULLO_RIM, MULLO_EYES)

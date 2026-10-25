@@ -2,7 +2,7 @@
 """BATLING RESCUE: Rescate en la cueva
 Escritorio:  pip install pygame  y  python main.py
 Navegador:   se compila con pygbag (ver tools/build_web.py y LEEME.txt).
-Todo (gráficos y sonidos) se genera por código; no necesita archivos externos."""
+Gráficos y sonidos se generan por código; el único archivo externo es el logo (assets/logo.png)."""
 import asyncio
 import os
 

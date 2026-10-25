@@ -372,7 +372,15 @@ class CaveMap:
                 lt = min(self.land, key=lambda t: math.hypot(t[0] - c[0], t[1] - c[1]))
             self.lair = self._px(lt)
             spots.append(self.lair)
-            paco = pick(700)
+            lair_d = flow[lt[1]][lt[0]]
+            paco = None                                    # Paco queda antes que las gemelas: primero lo rescata a él
+            for _ in range(12):
+                cand = pick(700)
+                ct = (int(cand[0] // T), int(cand[1] // T))
+                if 0 <= flow[ct[1]][ct[0]] < lair_d * .85:
+                    paco = cand
+                    break
+                paco = paco or cand
             return [paco, self._snap((self.lair[0] + 50, self.lair[1] + 12))]
         out = [pick() for _ in range(len(entries))]
         return self._by_distance(out)                       # Chispa es la primera que encuentra, luego Bruno y Lía

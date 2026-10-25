@@ -24,9 +24,15 @@ class Game:
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         ui.init_fonts()
+        self._set_icon()
         self.screen.fill((4, 3, 10))                 # sintetizar los sonidos tarda un par de segundos
-        ui.text(self.screen, ui.F_M, 'BATling Rescue', W // 2, H // 2 - 14, (210, 190, 255), True)
-        ui.text(self.screen, ui.F_XS, 'Cargando...', W // 2, H // 2 + 20, (150, 135, 180), True)
+        logo = ui.logo(360)
+        if logo is not None:
+            self.screen.blit(logo, logo.get_rect(center=(W // 2, H // 2 - 30)))
+            ui.text(self.screen, ui.F_XS, 'Cargando...', W // 2, H // 2 + 150, (150, 135, 180), True)
+        else:
+            ui.text(self.screen, ui.F_M, 'BATling Rescue', W // 2, H // 2 - 14, (210, 190, 255), True)
+            ui.text(self.screen, ui.F_XS, 'Cargando...', W // 2, H // 2 + 20, (150, 135, 180), True)
         pygame.display.flip()
         self.sounds = SoundManager()
         self.backdrop = ui.Backdrop()
@@ -42,6 +48,19 @@ class Game:
         self._last_finger = -9.0
         self.scene = self._make(('title', {}))
         self.scene.enter()
+
+    @staticmethod
+    def _set_icon():
+        """Ícono de la ventana: el logo del juego (si está assets/logo.png)."""
+        img = ui.logo(64)
+        if img is None or IS_WEB:
+            return
+        icon = pygame.Surface((64, 64), pygame.SRCALPHA)
+        icon.blit(img, img.get_rect(center=(32, 32)))
+        try:
+            pygame.display.set_icon(icon)
+        except pygame.error:
+            pass
 
     # ------------------------------------------------------------ historia
     @staticmethod

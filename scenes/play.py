@@ -20,7 +20,7 @@ from scenes.overlays import draw_overlay
 from settings import (W, H, NEST, NEST_R, SAFE_R, TILE, BAT_HP, SCREECH_CD, SCREECH_CD_DECIDED, SCREECH_R,
                       REVEAL_T, REVEAL_T_READER, ECHO_FLASH_T, SHIELD_CD, DASH_CD, DASH_CD_AIR, BRIGHTNESS_LEVELS,
                       IMPACT_NOISE_MIN, IMPACT_NOISE_MAX, C_IMPACT, C_GREEN, C_PUP, C_GOLD)
-from story import LEVELS, PUPS, ECHO_MESSAGE, WHISPER_MESSAGE, pup_count, rescued_before
+from story import LEVELS, PUPS, ECHO_MESSAGE, WHISPER_MESSAGE, XOLTHAR_MESSAGE, AIR_MESSAGE, pup_count, rescued_before
 
 
 def _web_tile():
@@ -210,8 +210,8 @@ class PlayScene(Scene):
         self.enemies.append(e)
 
     def moment(self, key):
-        """Momentos de la historia a mitad del nivel: se viven en tiempo real, sin texto ni pausa
-        (las cinemáticas de fin de acto los cuentan con palabras)."""
+        """Momentos de la historia a mitad del nivel: se viven en tiempo real y sin pausa. El susurro, la Sala del
+        Eco, Xolthar dormido y su despertar llevan un mensaje breve en pantalla (como lo cuenta la propuesta)."""
         if key in self.done_moments:
             return
         self.done_moments.add(key)
@@ -238,7 +238,11 @@ class PlayScene(Scene):
                 self.game.progress['decided'] = True
             for k in range(3):
                 self.rings.append([b.x, b.y, -k * 60, 420, (200, 180, 255)])
-        elif key == 'follow_air':                             # 3.ª mejora: recuerda a la Abuela, «sigue el aire»
+        elif key == 'climax':                                 # ve a las gemelas junto a una forma enroscada enorme
+            self.banner = [XOLTHAR_MESSAGE[0], XOLTHAR_MESSAGE[1], 0.0]
+            self.sounds.play('story', base=.45)
+        elif key == 'follow_air':                             # 3.ª mejora: recuerda el consejo, «sigue el aire»
+            self.banner = [AIR_MESSAGE[0], AIR_MESSAGE[1], 0.0]
             self.sounds.play('canela', base=.55)
             self.sounds.play('upgrade', base=.8)
             self.air_flow = True
@@ -1114,7 +1118,8 @@ class PlayScene(Scene):
             ui.draw_pup(c, sx + 22 - ox, sy - 3 + math.sin(self.t * 5 + 2) * 1.5, p.flap + 1.3, -p.sway(self.t + 1), PUP_SC,
                         p.looks[-1], self.t + 1, cry)
         else:
-            ui.draw_pup(c, sx, sy, p.flap, p.sway(self.t), PUP_SC, p.looks[0], self.t, p.ping > 0, p.scared > 0)
+            ui.draw_pup(c, sx, sy, p.flap, p.sway(self.t), PUP_SC, p.looks[0], self.t, p.ping > 0, p.scared > 0,
+                        p.asleep if p.behavior == 'ratos' else None)
 
     def _draw_after_light(self, c):
         """Lo que debe verse aun en la oscuridad: ojos, nombres, niebla, corriente de aire y luz del amanecer."""
@@ -1206,7 +1211,8 @@ class PlayScene(Scene):
                     ui.mini_heart(c, sx - (p.x - p.home[0]), sy - 22 - 8 * q, 3 + 2 * math.sin(math.pi * q),
                                   (255, int(120 + 60 * q), 170))
                 for k, nm in enumerate(p.looks):
-                    ui.pup_extras(c, sx + ((k * 44 - 22) - (p.x - p.home[0]) if p.count > 1 else 0), sy, ui.PUP_LOOKS.get(nm, {}), self.t + k)
+                    lk = ui.nap_look(ui.PUP_LOOKS.get(nm, {}), p.asleep if p.behavior == 'ratos' else None)
+                    ui.pup_extras(c, sx + ((k * 44 - 22) - (p.x - p.home[0]) if p.count > 1 else 0), sy, lk, self.t + k)
         for p in self.pups:                                   # nombres de las crías cercanas
             if p is b.carry or not cam.visible(p.x, p.y):
                 continue

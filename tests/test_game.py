@@ -898,12 +898,24 @@ class GameTests(unittest.TestCase):
         self.assertEqual(story.LEVELS[3]['end_min'], 330)                 # la colonia parte a las 05:30
         self.assertIn('dos vagonetas', story.BEHAVIOR_TEXT['gemelas'])
         allt = ' '.join(' '.join(sh[1]) for c in story.CUTSCENES.values() for sh in c['shots'])
-        for frase in ('Abuela Canela', '05:30', 'la historia del ciempiés gigante', 'en ese momento no parecía importante',
-                      'Si algún día bajan a la mina, sigan el aire. El aire sabe salir', 'no despierten a lo que duerme al fondo',
-                      'Mullo escucha', 'Ya vuelvo. Quédense quietas', '«Sigan el aire', 'piel vieja de ciempiés',
-                      'Chispa contesta primero', 'la última en irse', 'ya casi va a amanecer', 'de regreso al nido de siempre',
-                      'dudan en seguirla'):
+        for frase in ('Abuela Canela', '05:30', 'la historia del Gran Ciempiés', 'en ese momento no parecía importante',
+                      'Si algún día bajan a la mina, sigan el aire. El aire debe salir', 'no despierten a lo que duerme al fondo',
+                      'sin dispersarse', 'no encuentra nada cerca', 'Ya vuelvo. Quédense quietas', 'lugares más lejanos',
+                      'el rastro de Chispa', 'piedritas movidas y rasguños', 'volar sobre ella es más seguro',
+                      'Ya falta poco para que la colonia se vaya', 'piel vieja de ciempiés', 'ciempiés cazadores que oyen todo',
+                      'cuando la colonia ya está saliendo', 'la última en la boca de la cueva', 'asustadas por tanto eco y dudan',
+                      'la de siempre y no la de la cueva', 'Chispa contesta primero', 'responden las otras nueve',
+                      'Mullo no deja a nadie atrás'):
             self.assertIn(frase.lower(), allt.lower())
+        self.assertNotIn('El aire sabe salir', allt)
+        self.assertNotIn('primera luz', allt)                            # la propuesta no habla de luz al final del Acto II
+        self.assertEqual([sh[0] for sh in story.CUTSCENES['apertura']['shots']],
+                         ['dusk', 'tale', 'advice', 'canela', 'search', 'goodbye', 'leaving'])
+        self.assertEqual([sh[0] for sh in story.CUTSCENES['n3_intro']['shots']], ['mine'])   # el recuerdo llega al despertar Xolthar
+        self.assertIn('El aire debe salir', ' '.join(story.AIR_MESSAGE[1]))
+        self.assertIn('Xolthar', ' '.join(story.XOLTHAR_MESSAGE[1]))
+        self.assertIn('siguieron a su «mamá»', ' '.join(story.ECHO_MESSAGE[1]))
+        self.assertIn(('Mora', 'ratos'), story.PUPS[2])
         self.assertNotIn('Eco la repetía', allt)
         self.assertNotIn('una sola vida', allt)                          # ya no hay toma de «se queda con una vida»
         n2 = [sh[0] for sh in story.CUTSCENES['n2_fin']['shots']]
@@ -911,15 +923,52 @@ class GameTests(unittest.TestCase):
         self.assertNotIn('La culpa se le vuelve decisión', ' '.join(story.ECHO_MESSAGE[1]))
         self.assertNotIn('escape', [sh[0] for sh in story.CUTSCENES['final']['shots']])
         self.assertEqual(story.BLACK_BEFORE.get('n1_intro'), 2.0)
-        apertura = [sh[0] for sh in story.CUTSCENES['apertura']['shots']]
-        self.assertIn('canela', apertura)
-        self.assertIn('advice', apertura)
         from enemies import NAMES
         self.assertEqual(NAMES['boss'], 'Xolthar')
         import art
         for c in story.CUTSCENES.values():                                # cada toma tiene su ilustración
             for sh in c['shots']:
                 self.assertIn(sh[0], art.SHOTS)
+
+    def test_mora_sleeps_in_turns(self):
+        s = self.fresh(2)
+        mora = [p for p in s.pups if p.behavior == 'ratos'][0]
+        s.bat.x, s.bat.y = mora.x + 400, mora.y
+        seen, chirps = set(), 0
+        for _ in range(int(30 / .05)):
+            was = mora.ping
+            mora.update(.05, s)
+            seen.add(mora.asleep)
+            if mora.asleep and mora.ping > was:
+                chirps += 1
+        self.assertEqual(seen, {True, False})                             # se duerme y se despierta
+        self.assertEqual(chirps, 0)                                       # dormida no chilla
+
+    def test_climax_and_wake_show_story_messages(self):
+        s = self.fresh(3)
+        s.moment('climax')
+        self.assertEqual(s.banner[0], story.XOLTHAR_MESSAGE[0])
+        s.moment('follow_air')
+        self.assertEqual(s.banner[0], story.AIR_MESSAGE[0])
+        self.assertTrue(s.air_flow)
+
+    def test_paco_before_the_twins(self):
+        s = self.fresh(3)
+        cv = s.cave
+        paco = [p for p in s.pups if p.name == 'Paco'][0]
+        flow = cv.flow
+        lt = (int(cv.lair[0] // 32), int(cv.lair[1] // 32))
+        pt = (int(paco.x // 32), int(paco.y // 32))
+        self.assertLess(flow[pt[1]][pt[0]], flow[lt[1]][lt[0]])
+
+    def test_credits_and_logo(self):
+        import inspect
+        import ui
+        from scenes import cutscene
+        src = inspect.getsource(cutscene.EndScene.draw)
+        self.assertIn('Galaviz Ricardo Hugo Enrique', src)
+        self.assertIn('Cervantes Rios Gael Rodrigo', src)
+        self.assertIsNotNone(ui.logo(200))
 
     def test_upgrade_1_reader_after_act_one(self):
         s = self.fresh(1)
@@ -987,7 +1036,7 @@ class GameTests(unittest.TestCase):
     def test_new_cutscene_shots_draw(self):
         import art
         surf = pygame.Surface((W, H))
-        for key in ('return_nest', 'canela', 'tale', 'goodbye', 'advice', 'leaving', 'recall', 'near_dawn', 'mine_gate', 'escape', 'dawn_nest',
+        for key in ('return_nest', 'canela', 'tale', 'goodbye', 'advice', 'leaving', 'search', 'mine_gate', 'escape', 'dawn_nest',
                     'true_voice', 'departure'):
             shot = art.SHOTS[key]()
             for t in (0.0, 1.5, 4.0):

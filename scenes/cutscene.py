@@ -170,8 +170,8 @@ class EndScene(Scene):
         # créditos: nombre y materia, profesor, equipo y grupo (cada uno en su bloque)
         blocks = [('Videojuego · Materia', ['BATling Rescue  ·  Creación de videojuegos']),
                   ('Profesor', ['Mtro. Jesús Barrón Vidales']),
-                  ('Equipo', ['Alva Bustamante Elizabeth  ·  Gael Rodrigo Cervantes Rios',
-                              'Francisco Feliciano Carlos  ·  Galavis Ricardo Hugo Enrique']),
+                  ('Equipo', ['Alva Bustamante Elizabeth  ·  Cervantes Rios Gael Rodrigo',
+                              'Francisco Feliciano Carlos  ·  Galaviz Ricardo Hugo Enrique']),
                   ('Grupo', ['10IDS2'])]
         y = 284
         for label, lines in blocks:

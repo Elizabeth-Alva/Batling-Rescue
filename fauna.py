@@ -368,6 +368,8 @@ class Resting:
     def __init__(self, idx, total=4, name=None):
         self.name = name
         self.behavior = _behavior_of(name)
+        if self.behavior == 'ratos':                          # en el nido, Mora también se vuelve a dormir
+            self.behavior = 'dormilona'
         a = -math.pi / 2 + TAU * idx / max(4, total) + random.uniform(-.2, .2)
         r = NEST_R * (.22 if self.behavior == 'asustadiza' else .38)
         self.x, self.y = NEST[0] + math.cos(a) * r, NEST[1] + math.sin(a) * r

@@ -20,6 +20,29 @@ def _font(size):
     return pygame.font.Font(None, round(size * 1.3))
 
 
+_LOGO_IMG = {}
+
+
+def logo(width):
+    """Logo oficial (assets/logo.png) escalado al ancho pedido; None si no está el archivo."""
+    if width in _LOGO_IMG:
+        return _LOGO_IMG[width]
+    img = None
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'logo.png')
+    try:
+        raw = pygame.image.load(path)
+        try:
+            raw = raw.convert_alpha()
+        except pygame.error:
+            pass
+        h = int(raw.get_height() * width / raw.get_width())
+        img = pygame.transform.smoothscale(raw, (width, h))
+    except (pygame.error, FileNotFoundError, OSError):
+        img = None
+    _LOGO_IMG[width] = img
+    return img
+
+
 def init_fonts():
     global F_S, F_M, F_L, F_XL, F_XS
     F_XS, F_S, F_M, F_L, F_XL = (_font(s) for s in (15, 18, 28, 54, 92))
@@ -344,6 +367,15 @@ def _pup_marks(s, x, y, sc, lk, t, lit=False):
         pygame.draw.circle(s, (255, 230, 240), (int(bx), int(by)), max(2, int(2 * u)))
 
 
+def nap_look(lk, asleep):
+    """Aspecto de una cría que duerme a ratos (Mora): dormida (ojos cerrados y burbujita) o bien despierta."""
+    if asleep is None:
+        return lk
+    if asleep:
+        return dict(lk, eyes='closed', zzz=True, yawny=False)
+    return dict(lk, eyes='big', zzz=False, yawny=True)
+
+
 def pup_extras(s, x, y, lk, t, cry=False):
     """Detalles que flotan alrededor de la cría (se dibujan sobre la oscuridad): rasgo propio, zzz, ondas de eco."""
     _pup_marks(s, x, y, .6, lk, t, lit=True)
@@ -373,10 +405,11 @@ def pup_extras(s, x, y, lk, t, cry=False):
                             (-.5 if sd > 0 else math.pi - .5), (.5 if sd > 0 else math.pi + .5), 1)
 
 
-def draw_pup(s, x, y, flap, lean=0.0, sc=.55, name=None, t=0.0, cry=False, scared=False):
+def draw_pup(s, x, y, flap, lean=0.0, sc=.55, name=None, t=0.0, cry=False, scared=False, asleep=None):
     """Cría: flap es la fase del aleteo; lean la inclina al dar pasitos; name le da su aspecto propio.
-    Las inquietas (Chispa, Paco) dan saltitos con meneo; Nube se tapa los ojos si está asustada."""
-    lk = PUP_LOOKS.get(name, {})
+    Las inquietas (Chispa, Paco) dan saltitos con meneo; Nube se tapa los ojos si está asustada;
+    asleep (solo Mora, que duerme a ratos): True dormida, False despierta."""
+    lk = nap_look(PUP_LOOKS.get(name, {}), asleep)
     if lk.get('bouncy'):                                                 # inquietas: saltitos y meneo de alegría
         q = (t + x * .003) % 3.2
         if q < .8:

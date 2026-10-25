@@ -24,6 +24,7 @@ SITE = os.path.join(OUT, "site")
 def stage():
     shutil.rmtree(OUT, ignore_errors=True)
     os.makedirs(os.path.join(APP, "scenes"))
+    os.makedirs(os.path.join(APP, "assets"))
     for fn in os.listdir(ROOT):
         if fn.endswith(".py"):
             shutil.copy(os.path.join(ROOT, fn), APP)
@@ -37,6 +38,11 @@ def stage():
         for fn in os.listdir(scenes_img):
             if fn.lower().endswith((".png", ".jpg", ".jpeg")):
                 shutil.copy(os.path.join(scenes_img, fn), dest)
+    logo = os.path.join(ROOT, "assets", "logo.png")                   # logo oficial (portada) y favicon del sitio
+    if os.path.exists(logo):
+        shutil.copy(logo, os.path.join(APP, "assets"))
+        icon = os.path.join(ROOT, "assets", "promo", "icono.png")
+        shutil.copy(icon if os.path.exists(icon) else logo, os.path.join(APP, "favicon.png"))
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "export_sounds.py"), os.path.join(APP, "sounds")],
                    check=True)
 
