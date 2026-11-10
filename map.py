@@ -56,6 +56,7 @@ class CaveMap:
             self.centers = [(NEST_T[0], NEST_T[1], 6.0), (self.w / 2, self.h / 2, 8.0), (self.w - 12, self.h - 10, 8.0)]
         self.water = bytearray(self.w * self.h)
         self.web = set()                   # tiles con la cortina de telarañas (bloquean hasta que gritas)
+        self.door_block, self.secret_door = set(), None    # entrada de la sala secreta (ver _make_secret_door)
         self.echo = self.lair = None       # Sala del Eco (nivel 2) y guarida del jefe (nivel 3)
         self.islets = []
         if self.theme_name == 'lake':
@@ -68,6 +69,7 @@ class CaveMap:
         self.flow = self._distances(NEST_T)                      # distancia (en tiles) al punto de entrega
         self.pup_spots = self._plan_pups()
         self.trail_marks, self.rails, self.carts, self.beams, self.lamps, self.cobwebs = [], [], [], [], [], []
+        self.rail_carts = []                                # vagonetas sueltas sobre los rieles (solo en la mina)
         self.crystals = []                 # (x, y, color)
         self.fungi = []                    # (x, y) parches de hongos luminosos
         self.algae = []                    # (x, y) algas del Lago Negro
@@ -84,6 +86,7 @@ class CaveMap:
             self._make_current()
         self._place_props()
         self.bg = self._render()
+        self._make_secret_door()
         self.explored = bytearray(self.w * self.h)
         self.visited = bytearray(self.w * self.h)           # lo que has recorrido (memoria visual)
         self.mem_version = 0                                # cambia cada vez que se recorre un tile nuevo
@@ -274,6 +277,35 @@ class CaveMap:
         mouth = path[-1] if path else (cx, cy)
         self.secret = dict(center=self._px((cx, cy)), tiles=room | set(path), room=room, path=path,
                            mouth=self._px(mouth), rx=3.6 * T, ry=2.9 * T)
+
+    # tipo de entrada de la sala secreta por escenario (propuesta: «detrás de raíces, una cortina de agua o tablas sueltas»)
+    DOOR_KIND = {'fungi': 'roots', 'lake': 'water', 'mine': 'boards'}
+
+    def _make_secret_door(self):
+        """Tapa la boca del pasadizo secreto: raíces (se rompen con el grito), cortina de agua (se atraviesa
+        volando, solo la esconde) o tablas sueltas (se rompen con el impulso)."""
+        self.door_block = set()                             # tiles que bloquean a Mullo mientras la entrada siga cerrada
+        self.secret_door = None
+        sc = self.secret
+        if not sc or not sc['path']:
+            return
+        path = sc['path']
+        mouth = path[-1]
+        prev = path[-2] if len(path) > 1 else next(iter(sc['room']))
+        kind = self.DOOR_KIND.get(self.theme_name, 'roots')
+        self.secret_door = dict(kind=kind, tile=mouth, pos=self._px(mouth), open=False,
+                                axis='v' if mouth[0] != prev[0] else 'h',    # dirección del pasadizo
+                                t=0.0, splash=0.0)
+        if kind != 'water':
+            self.door_block = {mouth}
+
+    def open_secret_door(self):
+        d = self.secret_door
+        if d and not d['open']:
+            d['open'], d['t'] = True, 0.0
+            self.door_block = set()
+            return True
+        return False
 
     def in_secret(self, x, y):
         tx, ty = int(x // T), int(y // T)
@@ -467,12 +499,16 @@ class CaveMap:
         """Rieles hasta la guarida, vagonetas, vigas en los pasillos y lámparas apagadas."""
         path = self.path(NEST, self.lair, walk=False) or []
         self.rails = self._smooth([NEST] + path, 3)
+        self.rail_carts = []                                   # vagonetas sueltas: índices sobre los rieles (ruedan)
         if len(self.rails) > 10:
             for _ in range(4):
                 i = random.randint(5, len(self.rails) - 6)
+                if any(abs(i - j) < 6 for j in self.rail_carts):
+                    continue
                 x, y = self.rails[i]
                 (ax, ay), (bx, by) = self.rails[i - 2], self.rails[i + 2]
-                self.carts.append((x, y, math.atan2(by - ay, bx - ax), False))
+                self.carts.append((x, y, math.atan2(by - ay, bx - ax), 'rail'))   # 'rail': se dibuja aparte (se mueve)
+                self.rail_carts.append(i)
         cx, cy = self.pup_spots[1]
         for dx in (-22, 22):                                   # dos vagonetas: una para Bolillo y otra para Pozolito
             self.carts.append((cx + dx, cy, 0.0, False))
@@ -549,7 +585,8 @@ class CaveMap:
     # ------------------------------------------------------------ consultas
     def solid(self, tx, ty):
         """Pared (o telaraña): bloquea a Mullo."""
-        return tx < 0 or ty < 0 or tx >= self.w or ty >= self.h or self.g[ty][tx] or (tx, ty) in self.web
+        return tx < 0 or ty < 0 or tx >= self.w or ty >= self.h or self.g[ty][tx] or (tx, ty) in self.web \
+            or (tx, ty) in self.door_block
 
     def blocked(self, tx, ty):
         """Para los que caminan (arañas, escarabajos, cazadores): también el agua."""
@@ -581,7 +618,7 @@ class CaveMap:
 
     def _blockmap(self, walk):
         """Mapa plano de casillas bloqueadas (se recalcula solo cuando cambia la telaraña). Acelera la búsqueda."""
-        key = (walk, len(self.web))
+        key = (walk, len(self.web), len(self.door_block))
         cache = getattr(self, '_bm', None)
         if cache is None or cache[0] != key:
             w, h = self.w, self.h
@@ -590,7 +627,7 @@ class CaveMap:
                 row = self.g[y]
                 for x in range(w):
                     i = y * w + x
-                    if row[x] or (x, y) in self.web or x in (0, w - 1) or y in (0, h - 1) or \
+                    if row[x] or (x, y) in self.web or (x, y) in self.door_block or x in (0, w - 1) or y in (0, h - 1) or \
                             (walk and (self.water[i] or self.secret_mask[i])):
                         bm[i] = 1
             self._bm = cache = (key, bm)
@@ -1032,7 +1069,8 @@ class CaveMap:
         for x, y, side in self.lamps:                                # faroles apagados
             decor.lantern(bg, x, y)
         for x, y, ang, lair in self.carts:
-            draw_cart(bg, x, y, ang, 1.25 if lair else 1.0)
+            if lair != 'rail':                                       # las sueltas se dibujan en el juego (ruedan)
+                draw_cart(bg, x, y, ang, 1.25 if lair else 1.0)
         if self.molt:                                                # la piel vieja de Xolthar (quieta, pálida y vacía)
             from art import draw_molt
             x, y, ang = self.molt

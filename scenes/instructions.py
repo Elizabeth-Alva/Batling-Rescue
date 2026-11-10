@@ -32,16 +32,16 @@ def icon(s, kind, cx, cy, t):
         r = 24 + int(2 * math.sin(t * 8))
         pygame.draw.circle(s, (40, 80, 110), (cx, cy), r)
         pygame.draw.circle(s, (170, 230, 255), (cx, cy), r, 3)
-        ui.draw_bat(s, cx, cy + 1, t * 9, .45)
+        ui.draw_mullo(s, cx, cy + 1, t * 9, .45)
     elif kind == 'screech':
         for k in range(3):
             p = ((t * 1.2 + k / 3) % 1)
             pygame.draw.circle(s, tuple(min(255, int(c * (1 - p) + 20)) for c in (150, 220, 255)), (cx, cy), int(6 + 26 * p), 2)
-        ui.draw_bat(s, cx, cy + 1, t * 9, .3)
+        ui.draw_mullo(s, cx, cy + 1, t * 9, .3)
     elif kind == 'dash':
         for k in range(4):
             pygame.draw.line(s, (255, 200, 120), (cx - 30 + k * 4, cy - 6 + k * 4), (cx - 8 + k * 4, cy - 6 + k * 4), 2)
-        ui.draw_bat(s, cx + 10 + 4 * math.sin(t * 6), cy, t * 14, .45)
+        ui.draw_mullo(s, cx + 10 + 4 * math.sin(t * 6), cy, t * 14, .45)
     elif kind == 'map':
         pygame.draw.rect(s, (10, 8, 20), (cx - 28, cy - 20, 56, 40), border_radius=4)
         pygame.draw.rect(s, (110, 95, 140), (cx - 28, cy - 20, 56, 40), 1, border_radius=4)
@@ -66,6 +66,9 @@ class InstructionsScene(Scene):
         self.panel = pygame.Surface((W - 80, H - 40), pygame.SRCALPHA)       # se crea una sola vez
         pygame.draw.rect(self.panel, (6, 4, 16, 205), self.panel.get_rect(), border_radius=18)
         pygame.draw.rect(self.panel, (110, 80, 170, 220), self.panel.get_rect(), 2, border_radius=18)
+
+    def enter(self):
+        self.game.sounds.menu_music()                                   # el Can-Can sigue, más bajito (3%)
 
     def handle(self, ev):
         if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE):

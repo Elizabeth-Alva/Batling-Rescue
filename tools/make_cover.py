@@ -30,7 +30,7 @@ def main():
     for _ in range(60):
         cave.update(1 / 30)
     draw_cover(s, cave.t, cave)
-    ui.text(s, ui.F_S, 'Acción y rescate en 2D  ·  3 actos, una sola noche  ·  E10+', W // 2, H - 52, (235, 220, 255), True)
+    ui.text(s, ui.F_S, 'Acción y rescate en 2D  ·  3 actos, una sola noche  ·  Para todas las edades', W // 2, H - 52, (235, 220, 255), True)
     ui.text(s, ui.F_XS, 'Python 3 + Pygame  ·  Equipo 10IDS2', W // 2, H - 26, (170, 155, 200), True)
     pygame.image.save(s, os.path.join(out, 'portada.png'))
     # banner de itch.io (630 x 500): recorte centrado de la portada

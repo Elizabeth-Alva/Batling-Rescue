@@ -327,7 +327,7 @@ class DropSpider:
             pygame.draw.ellipse(s, (6, 8, 8), (sx - r, sy + 8 - r * .35, 2 * r, r * .7))
         pygame.draw.line(s, (200, 214, 214), (sx, top), (sx, by - 6 * k), 1)          # hilo de seda
         scared = self.t >= self.DANGLE
-        ui.draw_spider(s, sx, by, self.legs * (2.5 if scared else 1), .72 * k, math.pi / 2)
+        ui.draw_spider(s, sx, by, self.legs * (.45 if scared else .3), .72 * k, math.pi / 2)
         # carita: ojos grandes que miran a Mullo y se abren del susto
         ex, ey = sx, by + 4.5 * k
         big = 2.6 if scared else 1.8
@@ -365,13 +365,15 @@ class Resting:
     asustadiza: tiembla pegadita al centro del nido · eco: sigue repitiendo con ondas suaves · gemelas: juntitas.
     """
 
-    def __init__(self, idx, total=4, name=None):
+    def __init__(self, idx, total=4, name=None, sc=None):
         self.name = name
+        self.sc = sc or ui.PUP_SC                             # mismo tamaño que en el suelo (no cambia al entregarla)
         self.behavior = _behavior_of(name)
         if self.behavior == 'ratos':                          # en el nido, Mora también se vuelve a dormir
             self.behavior = 'dormilona'
         a = -math.pi / 2 + TAU * idx / max(4, total) + random.uniform(-.2, .2)
-        r = NEST_R * (.22 if self.behavior == 'asustadiza' else .38)
+        big = self.sc >= .65                                  # crías grandes: se acomodan un poco más separadas
+        r = NEST_R * ((.26 if big else .22) if self.behavior == 'asustadiza' else (.48 if big else .38))
         self.x, self.y = NEST[0] + math.cos(a) * r, NEST[1] + math.sin(a) * r
         self.t = random.uniform(0, 6)
         self.flap_t = 0.0
@@ -411,7 +413,7 @@ class Resting:
         busy = self.flap_t > 0 or self.arrive > 0 or self.spin > 0 or self.hop > 0
         flap = self.t * 22 if busy else 1.3 + .15 * math.sin(self.t * 2)
         lean = .35 * math.sin(self.spin * TAU) if self.spin > 0 else .1 * math.sin(self.t * .7)
-        ui.draw_pup(s, sx, sy + breathe, flap, lean, name=self.name, t=self.t)
+        ui.draw_pup(s, sx, sy + breathe, flap, lean, self.sc, name=self.name, t=self.t)
 
     def draw_fx(self, s, cam):
         ox, oy = self._offset()

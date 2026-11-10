@@ -160,6 +160,32 @@ def build_sounds():
         an[0] += .25 * (random.uniform(-1, 1) - an[0])
         return (an[0] * 1.8 + .25 * math.sin(TAU * (420 + 300 * p) * t)) * math.sin(math.pi * p) ** .8
     S['dash_air'] = mk(.34, dash_air, .45)
+
+    # --- sala secreta y derrumbes ---
+    # raíces secas que se rompen con el grito: crujidos secos en ráfaga
+    def roots(t, p):
+        crack = random.uniform(-1, 1) if random.random() < .18 * (1 - p) else 0
+        return (crack + .3 * math.sin(TAU * (240 - 120 * p) * t)) * (1 - p) ** 1.4
+    S['roots_break'] = mk(.5, roots, .5)
+    # tablas sueltas que se rompen con el impulso: golpe hueco de madera + astillas
+    def boards(t, p):
+        thud = math.sin(TAU * (150 - 70 * p) * t) * math.exp(-t * 14)
+        splint = random.uniform(-1, 1) * (math.exp(-t * 9) * .5 if random.random() < .5 else 0)
+        knock = math.sin(TAU * 420 * t) * math.exp(-t * 30) * .5
+        return thud + splint + knock
+    S['boards_break'] = mk(.55, boards, .6)
+    # cruzar la cortina de agua: chapoteo de agua que cae
+    wn = [0.0]
+
+    def splash(t, p):
+        wn[0] += .55 * (random.uniform(-1, 1) - wn[0])
+        return (wn[0] * 1.6 + random.uniform(-1, 1) * .25) * math.sin(math.pi * p) ** .6 * (1 - p * .5)
+    S['splash'] = mk(.6, splash, .4)
+    # piedra que cae del techo (derrumbe al rugir Xolthar): golpe sordo y gravilla
+    def rock(t, p):
+        return (math.sin(TAU * (90 - 40 * p) * t) * math.exp(-t * 10) * 1.2
+                + random.uniform(-1, 1) * math.exp(-t * 7) * .6)
+    S['rockfall'] = mk(.45, rock, .55)
     return S
 
 
@@ -254,6 +280,13 @@ def build_ambients():
 SOUND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sounds')
 
 
+SONG_CH = 1                           # canal reservado para la canción del menú
+MENU_SONG_VOL = .03                   # volumen del Can-Can en Instrucciones y Récords (3%)
+TITLE_SONG_VOL = .06                  # volumen del Can-Can en la portada, con el logo (6%)
+AMBIENT_MULT = .4                     # todos los sonidos de fondo (ambiente de cada cueva) más bajitos
+MUSIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'music')
+
+
 def load_sounds(folder=SOUND_DIR):
     """Carga los .ogg precalculados (tools/export_sounds.py). nombre_0.ogg, nombre_1.ogg... forman una lista."""
     S = {}
@@ -287,8 +320,11 @@ class SoundManager:
         self.listener = None            # callable -> (x, y) o None
         self.amb_ch, self.amb_name = None, None
         self.music_ch, self.music_name = None, None
+        self.song_ch, self._songs = None, {}
+        self.song_start, self.song_len = 0, 0.0
+        self.song_name = None           # canción (assets/music), p. ej. el Can-Can de la victoria
         pygame.mixer.set_num_channels(16)
-        pygame.mixer.set_reserved(1)                 # el canal 0 queda para la música
+        pygame.mixer.set_reserved(2)                 # canal 0: música del juego · canal 1: canción del menú
 
     def play(self, name, pos=None, base=1.0):
         snd = self.S.get(name)
@@ -307,6 +343,7 @@ class SoundManager:
     def ambient(self, vol, name='amb'):
         """Ambiente en bucle; si cambia de escenario, cambia el sonido de fondo."""
         name = name if name in self.S else 'amb'
+        vol *= AMBIENT_MULT
         if self.amb_ch and self.amb_ch.get_busy() and self.amb_name == name:
             self.amb_ch.set_volume(vol)
             return
@@ -323,15 +360,59 @@ class SoundManager:
             return
         self.music_name = name
         self.music_ch = pygame.mixer.Channel(0)
+        self.music_ch.set_volume(vol)                # ANTES de play (si no, el fundido sube al 100%)
         self.music_ch.play(self.S[name], loops=-1, fade_ms=600)
-        self.music_ch.set_volume(vol)
 
     def stop_music(self, fade=900):
         if self.music_ch and self.music_name:
             self.music_ch.fadeout(fade)
         self.music_name = None
 
-    def stop(self):
-        pygame.mixer.stop()
+    # ---------------------------------------------------------- canciones (archivos en assets/music)
+    def song(self, name, vol=.6, fade_ms=1200):
+        """Canción corta en bucle sin cortes (assets/music/<name>.ogg) en su propio canal reservado (el 1).
+        Si el archivo no está, no pasa nada: el juego sigue con sus sonidos sintetizados."""
+        if self.song_name == name and self.song_ch and self.song_ch.get_busy():
+            self.song_ch.set_volume(vol)
+            return True
+        snd = self._songs.get(name)
+        if snd is None:
+            path = os.path.join(MUSIC_DIR, name + '.ogg')
+            if not os.path.exists(path):
+                return False
+            try:
+                snd = self._songs[name] = pygame.mixer.Sound(path)
+            except pygame.error:
+                return False
+        self.song_ch = pygame.mixer.Channel(SONG_CH)
+        self.song_ch.set_volume(vol)                 # ANTES de play: el fundido de entrada sube hasta este volumen
+        self.song_ch.play(snd, loops=-1, fade_ms=fade_ms)
+        self.song_name = name
+        self.song_start, self.song_len = pygame.time.get_ticks(), snd.get_length()
+        return True
+
+    def song_pos(self):
+        """Segundo en el que va la canción (vuelve a 0 al repetirse) o None si no suena."""
+        if not self.song_name or not self.song_len:
+            return None
+        return ((pygame.time.get_ticks() - self.song_start) / 1000) % self.song_len
+
+    def stop_song(self, fade=800):
+        if self.song_name and self.song_ch:
+            self.song_ch.fadeout(fade)
+        self.song_name = None
+
+    def menu_music(self, vol=None):
+        """El Can-Can bajito del menú (portada, instrucciones y récords). No se reinicia al cambiar entre ellas;
+        solo cambia el volumen (6% en la portada, 3% en las demás)."""
+        return self.song('cancan', MENU_SONG_VOL if vol is None else vol, fade_ms=1500)
+
+    def stop(self, keep_song=False):
+        """Corta los sonidos; la canción del menú se apaga suave salvo con keep_song=True."""
+        for i in range(pygame.mixer.get_num_channels()):
+            if i != SONG_CH:
+                pygame.mixer.Channel(i).stop()
         self.amb_ch = None
         self.music_name = None
+        if not keep_song:
+            self.stop_song(600)

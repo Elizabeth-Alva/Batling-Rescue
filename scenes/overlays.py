@@ -1,8 +1,10 @@
-"""Pantallas superpuestas del nivel: pausa, derrota y nivel completado."""
+"""Pantallas superpuestas del nivel: pausa, derrota (GAME OVER) y nivel superado."""
 import pygame
 
+import scores
 import ui
-from settings import W, H, GOAL, C_GREEN, C_RED, C_PURPLE, C_GOLD, C_PUP
+from scenes.results import draw_game_over, draw_level_clear
+from settings import W, H
 
 
 _VEIL = None
@@ -22,44 +24,27 @@ def _menu_btn(screen, g):
 
 def draw_overlay(screen, g):
     global _VEIL
+    dt = getattr(g, 'ui_dt', 1 / 60)
+    if g.state == 'over':                               # GAME OVER y NIVEL SUPERADO traen su propio velo
+        return draw_game_over(screen, g, dt)
+    if g.state == 'clear':
+        return draw_level_clear(screen, g, dt)
     if _VEIL is None:                                   # el velo se crea una sola vez
         _VEIL = pygame.Surface((W, H), pygame.SRCALPHA)
         _VEIL.fill((0, 0, 10, 195))
     screen.blit(_VEIL, (0, 0))
-    cx, state, cfg = W // 2, g.state, g.cfg
-    if state == 'pause':
+    cx, cfg = W // 2, g.cfg
+    if g.state == 'pause':
         ui.text(screen, ui.F_L, 'PAUSA', cx, H // 2 - 70, center=True)
         ui.text(screen, ui.F_S, f'{cfg["act"]} · {cfg["name"]}', cx, H // 2 - 18, (200, 190, 230), True)
+        prog = getattr(g.game, 'progress', {}) or {}
+        times = f'Tiempo del nivel: {scores.fmt(g.t)}'
+        if prog.get('full_run'):
+            times = f'Tiempo total: {scores.fmt(prog.get("play_time", 0))}     ·     ' + times
+        ui.text(screen, ui.F_XS, times + '   (el reloj está detenido)', cx, H // 2 + 12, (255, 215, 150), True)
         if _touch(g):
-            ui.text(screen, ui.F_S, 'Toca la pantalla para continuar', cx, H // 2 + 30, (190, 180, 210), True)
+            ui.text(screen, ui.F_S, 'Toca la pantalla para continuar', cx, H // 2 + 50, (190, 180, 210), True)
             _menu_btn(screen, g)
         else:
             ui.text(screen, ui.F_S, 'P / Enter: continuar     M: mapa     B: brillo     Esc: menú principal',
-                    cx, H // 2 + 30, (190, 180, 210), True)
-    elif state == 'over':
-        if g.lose_reason == 'dawn':
-            ui.text(screen, ui.F_L, 'LA NOCHE SE ACABA', cx, 220, C_GOLD, True)
-            ui.text(screen, ui.F_S, 'La colonia se prepara para partir y los chillidos se apagan en lo profundo.',
-                    cx, 290, (220, 210, 235), True)
-        else:
-            ui.text(screen, ui.F_L, 'MULLO NO PUEDE MÁS', cx, 220, C_RED, True)
-            ui.text(screen, ui.F_S, 'Agotada, se refugia en lo alto. Pero sus crías siguen allá abajo.',
-                    cx, 290, (220, 210, 235), True)
-        ui.text(screen, ui.F_M, f'Crías a salvo: {g.rescued}/{GOAL}', cx, 340, C_PUP, True)
-        if _touch(g):
-            ui.text(screen, ui.F_M, 'Toca para intentar de nuevo este nivel', cx, 400, C_GREEN, True)
-            _menu_btn(screen, g)
-        else:
-            ui.text(screen, ui.F_M, 'R / Enter: intentar de nuevo este nivel', cx, 400, C_GREEN, True)
-            ui.text(screen, ui.F_S, 'Esc: menú principal', cx, 445, (190, 180, 210), True)
-    elif state == 'clear':
-        k = min(1, g.clear_t / .6)
-        ui.text(screen, ui.F_S, f'{cfg["act"].upper()} · COMPLETADO', cx, 210, C_GOLD, True)
-        ui.text(screen, ui.F_L, cfg['name'], cx, 260, (240, 232, 255), True)
-        ui.text(screen, ui.F_M, f'Crías a salvo: {g.rescued}/{GOAL}', cx, 330, C_PUP, True)
-        ui.text(screen, ui.F_S, f'Tiempo: {int(g.t // 60)}:{int(g.t % 60):02d}', cx, 370, (210, 200, 230), True)
-        for i in range(GOAL):
-            ui.pup_icon(screen, cx - 9 * 22 // 2 + i * 22 - 11 + 11, 410, 'safe' if i < g.rescued else 'lost', g.clear_t + i)
-        if k >= 1 and g.clear_t > 1.2:
-            ui.text(screen, ui.F_S, 'Toca para continuar la historia' if _touch(g) else 'Enter: continuar la historia',
-                    cx, 460, C_PURPLE, True)
+                    cx, H // 2 + 50, (190, 180, 210), True)

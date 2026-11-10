@@ -319,3 +319,99 @@ class HangingCan:
                         col = (int(255 * q), int(225 * q), int(140 * q))
                         pygame.draw.line(s, col, (cx + math.cos(a) * r0, cy + math.sin(a) * r0),
                                          (cx + math.cos(a) * r1, cy + math.sin(a) * r1), 2)
+
+
+class RailCart:
+    """Vagoneta suelta sobre los rieles de la mina (Acto III). Con el IMPULSO, Mullo la empuja: rueda por los
+    rieles haciendo mucho ruido (atrae bichos) y aturde a los cazadores, arañas o escarabajos que atropella.
+    A Xolthar no lo detiene: choca con él y se para. Se frena sola y no entra a la zona del nido."""
+    PUSH_SPEED = 330                 # px/s al empujarla
+    FRICTION = 150                   # px/s² de frenado
+    NOISE_R = 340                    # el traqueteo se oye lejos
+    HIT_R = 26
+
+    def __init__(self, rails, idx, safe_from=None, safe_r=0):
+        self.rails = rails
+        self.cum = [0.0]                                       # distancia acumulada a lo largo de los rieles
+        for i in range(1, len(rails)):
+            self.cum.append(self.cum[-1] + math.dist(rails[i - 1], rails[i]))
+        self.u = self.cum[idx]
+        lo = 0.0
+        if safe_from:                                          # no entra al nido
+            for i, p in enumerate(rails):
+                if math.dist(p, safe_from) > safe_r:
+                    lo = self.cum[i]
+                    break
+        self.lo, self.hi = lo, self.cum[-1] - 30
+        self.v = 0.0
+        self.rattle = 0.0
+        self.noise_t = 0.0
+        self.x, self.y, self.ang = self._at(self.u)
+        self._img = {}
+
+    def _at(self, u):
+        cum, r = self.cum, self.rails
+        u = max(0.0, min(cum[-1], u))
+        lo, hi = 0, len(cum) - 1
+        while hi - lo > 1:                                     # búsqueda binaria del tramo
+            m = (lo + hi) // 2
+            if cum[m] <= u:
+                lo = m
+            else:
+                hi = m
+        seg = cum[hi] - cum[lo] or 1.0
+        f = (u - cum[lo]) / seg
+        (ax, ay), (bx, by) = r[lo], r[hi]
+        return ax + (bx - ax) * f, ay + (by - ay) * f, math.atan2(by - ay, bx - ax)
+
+    @property
+    def moving(self):
+        return abs(self.v) > 40
+
+    def push(self, dir_x, dir_y):
+        """Empujón del impulso: rueda hacia donde iba Mullo (según la dirección de los rieles)."""
+        tx, ty = math.cos(self.ang), math.sin(self.ang)
+        sgn = 1 if dir_x * tx + dir_y * ty >= 0 else -1
+        self.v = sgn * self.PUSH_SPEED
+        self.noise_t = 0.0
+
+    def update(self, dt):
+        """Devuelve True cuando toca hacer ruido (traqueteo)."""
+        if self.v == 0:
+            self.rattle = max(0.0, self.rattle - dt * 3)
+            return False
+        sgn = 1 if self.v > 0 else -1
+        self.v -= sgn * self.FRICTION * dt
+        if self.v * sgn <= 0:
+            self.v = 0.0
+        self.u += self.v * dt
+        if self.u < self.lo or self.u > self.hi:              # tope del riel: se detiene de golpe
+            self.u = max(self.lo, min(self.hi, self.u))
+            self.v = 0.0
+        self.x, self.y, self.ang = self._at(self.u)
+        self.rattle = min(1.0, abs(self.v) / self.PUSH_SPEED)
+        self.noise_t -= dt
+        if self.moving and self.noise_t <= 0:
+            self.noise_t = .3
+            return True
+        return False
+
+    def stop(self):
+        self.v = 0.0
+
+    def draw(self, s, cam, t):
+        sx, sy = cam.apply(self.x, self.y)
+        jx = math.sin(t * 70) * 1.2 * self.rattle               # traquetea al rodar
+        key = int(math.degrees(self.ang) // 6) * 6              # giros cacheados de 6 en 6 grados
+        img = self._img.get(key)
+        if img is None:
+            base = pygame.Surface((70, 70), pygame.SRCALPHA)
+            from decor import cart
+            cart(base, 35, 35, 0.0, 1.0)
+            img = self._img[key] = pygame.transform.rotate(base, -key)
+        s.blit(img, img.get_rect(center=(int(sx + jx), int(sy))))
+        if self.moving:                                        # chispitas de las ruedas sobre el riel
+            for k in range(2):
+                a = self.ang + math.pi + random.uniform(-.4, .4)
+                d = random.uniform(16, 26)
+                s.fill((255, 200, 120), (int(sx + math.cos(a) * d), int(sy + math.sin(a) * d), 2, 2))

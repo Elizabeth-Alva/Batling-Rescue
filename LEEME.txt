@@ -8,6 +8,20 @@ COMO JUGAR
 
 MENU
   Jugar .............. prólogo, 3 actos con sus cinemáticas y el final.
+  Récords ............ los 10 mejores tiempos por completar los 3 niveles.
+
+RÉCORDS DE TIEMPO (para competir)
+  - El récord es por completar la historia: el tiempo total de los 3 niveles. No pide nombre: se guarda solo,
+    con la fecha y la hora.
+  - Arriba, debajo del reloj de la noche, corre el cronómetro de la partida y se ve el récord a vencer
+    (verde: todavía puedes ganarle; rojo: ya te pasaste).
+  - El cronómetro se detiene en pausa y en las cinemáticas. Los reintentos sí suman tiempo.
+  - Al superar un nivel sale NIVEL SUPERADO con el tiempo del nivel, el total y cuántos niveles faltan.
+  - Al terminar sale VICTORIA con tu tiempo total, tu lugar y la tabla. Solo cuenta si empezaste desde «Jugar».
+  - Si pierdes sale GAME OVER con tu tiempo y las opciones Reintentar o Menú principal.
+  - Los récords se guardan en records.json (en la carpeta del juego) o en el navegador (versión web).
+  - En el menú (portada, instrucciones y récords) suena bajito el Can-Can de Offenbach
+    (assets/music/cancan.ogg; ver assets/music/LEEME.txt sobre la grabación).
 
 CONTROLES
   WASD / Flechas ... volar                 Espacio / clic izq. ... GRITO SÓNICO
@@ -45,6 +59,27 @@ HISTORIA (según la Propuesta: 3 actos = 3 niveles, de la medianoche a la partid
   Durante el juego no hay pausas: el susurro, la Sala del Eco, Xolthar dormido y su despertar se cuentan con
   mensajes breves que no detienen el juego; las cinemáticas de inicio y fin de cada acto cuentan lo demás.
 
+
+DETALLES DE LA PROPUESTA AGREGADOS
+  - Sala secreta de cada nivel: detrás de raíces secas (Acto I, se rompen con el GRITO), de una cortina de
+    agua (Acto II, se cruza volando) o de tablas sueltas (Acto III, se rompen con el IMPULSO).
+  - Si se acaba el tiempo, se ve cómo la colonia se va sin Mullo («con ella o sin ella») y luego GAME OVER.
+  - Mullo nunca deja de aletear, ni cuando se queda quieta.
+  - Si una cría chilla cerca pero fuera de la pantalla, aparecen ondas rosas en el borde hacia ella.
+  - Cuando ruge el Gran Ciempiés caen piedras del techo: su sombra avisa antes; quitan medio corazón
+    (el escudo las desvía).
+  - Diseños fieles a las fichas (sección 5): araña negra con borde oscuro, una marca en el lomo y ocho patas
+    largas; escarabajo azul petróleo metálico con seis patas cortas y dos antenas; cazador de siete segmentos
+    café rojizo con borde naranja, pinzas y ojos rojos (los únicos ojos que brillan en la oscuridad, con
+    Xolthar). Mullo casi negra con ojos ámbar que brillan; Chispa redonda con el mechón en el pecho.
+  - Ambiente por acto: esporas que brillan en las Galerías y polvo/tierrita que cae de las vigas en la mina.
+  - Galerías: los hongos que dan luz se encienden cuando les llega la onda del grito.
+  - Mina: las vagonetas sueltas sobre los rieles se empujan con el IMPULSO; ruedan haciendo mucho ruido
+    y aturden a los bichos que atropellan (a Xolthar no lo detienen).
+  - «No despierten a lo que duerme al fondo»: si haces ruido cerca de Xolthar dormido, se remueve, gruñe
+    y entreabre los ojos (aviso). En la huida, los rieles vibran y cae polvo antes de que llegue.
+  - Mullo es rastreadora: sus orejas giran hacia la cría cercana que todavía no ha encontrado.
+
 PERSONAJES
   Mullo (protagonista) · Xolthar, el Gran Ciempiés, y los bichos de la cueva (antagonistas) ·
   Chispa (coprotagonista) · Abuela Canela (secundario: solo en el prólogo y el final).
@@ -66,7 +101,7 @@ MECÁNICAS
   LATIDO: se oye cuando algo te persigue cerca.
   AVISO: dos notas agudas suenan cuando un enemigo te ve.
   AMBIENTE: cada escenario tiene su propio sonido de fondo (hongos, lago, mina).
-  ENEMIGO VENCIDO: se marea (estrellitas) y sale corriendo entre polvito. Nada de sangre (E10+).
+  ENEMIGO VENCIDO: se marea (estrellitas) y sale corriendo entre polvito. Nada de sangre (para todas las edades).
   SALAMANDRAS: en el Lago Negro nadan salamandras de cueva; si ven a un murciélago se espantan y se sumergen.
   GOTERAS: de las estalactitas caen gotas que se oyen y salpican.
   NIDO: las crías rescatadas descansan en el punto de entrega y saludan a Mullo con corazoncitos.

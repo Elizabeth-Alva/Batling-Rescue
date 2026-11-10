@@ -119,7 +119,8 @@ def mini_heart(s, x, y, r, col):
 
 
 def draw_bat(s, x, y, flap, sc=1.0, col=(40, 30, 60), body=(55, 42, 80), edge=(95, 75, 130), eye=(255, 220, 90),
-             bones=None, ear_in=None, glint=False, fold=0.0, mood='open', look=0.0, yawn=0.0, blush=None, wing=1.0, slim=1.0):
+             bones=None, ear_in=None, glint=False, fold=0.0, mood='open', look=0.0, yawn=0.0, blush=None, wing=1.0, slim=1.0,
+             ear=None):
     """Murciélago visto desde arriba: dos alas de seis puntos (con el borde festoneado entre los dedos), cuerpo
     elíptico con pancita, cabeza redonda, dos orejas triangulares y dos ojos.
     bones: dedos marcados · ear_in: interior de las orejas · glint: brillo en los ojos ·
@@ -169,13 +170,16 @@ def draw_bat(s, x, y, flap, sc=1.0, col=(40, 30, 60), body=(55, 42, 80), edge=(9
     for sd in (-1, 1):                                                 # patitas
         pygame.draw.line(s, body, (x + sd * 3 * sc, y + 14 * sc), (x + sd * 4.5 * sc, y + 18 * sc), max(1, int(1.4 * sc)))
     hx, hy = x + look * 1.5 * sc, y - 8 * sc
+    turn, perk = (ear if ear else (0.0, 0.0))                          # ear: (giro -1..1, alerta 0..1) hacia una cría
     for sd in (-1, 1):                                                 # orejas grandes y puntiagudas
-        ear = [(hx + sd * 2.5 * sc, hy - 3 * sc), (hx + sd * 8 * sc, hy - 15 * sc), (hx + sd * 9 * sc, hy + 1 * sc)]
-        pygame.draw.polygon(s, body, ear)
-        pygame.draw.polygon(s, bdark, ear, max(1, int(1.2 * sc)))
+        tip = (hx + (sd * 8 + turn * 3.2) * sc, hy - (15 + 2.5 * perk - abs(turn) * (1.5 if sd * turn < 0 else 0)) * sc)
+        ear_ = [(hx + sd * 2.5 * sc, hy - 3 * sc), tip, (hx + sd * 9 * sc, hy + 1 * sc)]
+        pygame.draw.polygon(s, body, ear_)
+        pygame.draw.polygon(s, bdark, ear_, max(1, int(1.2 * sc)))
         if ear_in:
-            pygame.draw.polygon(s, ear_in, [(hx + sd * 4.4 * sc, hy - 3.6 * sc), (hx + sd * 7.6 * sc, hy - 12 * sc), (hx + sd * 8 * sc, hy - .4 * sc)])
-        pygame.draw.line(s, edge, ear[1], ear[2], max(1, int(sc)))
+            itip = (hx + (sd * 7.6 + turn * 2.6) * sc, hy - (12 + 2 * perk) * sc)
+            pygame.draw.polygon(s, ear_in, [(hx + sd * 4.4 * sc, hy - 3.6 * sc), itip, (hx + sd * 8 * sc, hy - .4 * sc)])
+        pygame.draw.line(s, edge, ear_[1], ear_[2], max(1, int(sc)))
     pygame.draw.circle(s, bdark, (int(hx), int(hy)), max(2, int(7.8 * sc)))
     pygame.draw.circle(s, body, (int(hx), int(hy)), max(2, int(7 * sc)))       # cabeza redonda
     pygame.draw.circle(s, tuple(min(255, int(c * 1.12 + 8)) for c in body), (int(hx - 2 * sc), int(hy - 2.4 * sc)), max(1, int(3.2 * sc)))
@@ -199,13 +203,41 @@ def draw_bat(s, x, y, flap, sc=1.0, col=(40, 30, 60), body=(55, 42, 80), edge=(9
         pygame.draw.ellipse(s, (40, 16, 30), (hx - 1.6 * sc, hy + 2.6 * sc, 3.2 * sc, (1 + 3 * yawn) * sc))
 
 
-# Mullo: silueta violácea con borde lila y dos puntos ámbar (lo primero que se ve de ella en la oscuridad)
-MULLO_LOOK = dict(col=(42, 28, 66), body=(58, 40, 88), edge=(184, 146, 246), eye=(255, 184, 64),
-                  bones=(78, 58, 112), ear_in=(96, 66, 120), glint=True, blush=(150, 80, 140), slim=.72)
+# Mullo (propuesta 5.1): «pelaje violeta muy oscuro, casi negro», orejas grandes y puntiagudas, alas con los dedos
+# marcados y un borde lila, y «ojos color ámbar, lo primero que se ve de ella en la oscuridad» (sin cachetitos).
+MULLO_LOOK = dict(col=(26, 18, 40), body=(36, 26, 54), edge=(190, 152, 250), eye=(255, 184, 64),
+                  bones=(70, 54, 100), ear_in=(70, 50, 92), glint=True, blush=None, slim=.72)
+_EYE_GLOW = {}
 
 
-def draw_mullo(s, x, y, flap, sc=1.0, **pose):
+def _eye_glow(r):
+    """Halo ámbar suave (se suma a la imagen) para los ojos de Mullo."""
+    g = _EYE_GLOW.get(r)
+    if g is None:
+        g = _EYE_GLOW[r] = pygame.Surface((2 * r, 2 * r))
+        for i in range(r, 0, -1):
+            k = (1 - i / r) ** 2
+            pygame.draw.circle(g, (int(120 * k), int(70 * k), int(10 * k)), (r, r), i)
+    return g
+
+
+def mullo_eye_glow(s, x, y, sc=1.0, tilt=0.0, **pose):
+    """Los ojos ámbar de Mullo brillan un poco (solo con los ojos abiertos)."""
+    if pose.get('mood', 'open') != 'open' or pose.get('yawn', 0) > .5:
+        return
+    g = _eye_glow(max(3, int(5 * sc)))
+    ca, sa = math.cos(tilt), math.sin(tilt)
+    look = pose.get('look', 0.0)
+    for sd in (-1, 1):
+        dx, dy = (look * 1.5 + sd * 3.3 + look) * sc, -9.2 * sc
+        ex, ey = x + dx * ca - dy * sa, y + dx * sa + dy * ca
+        s.blit(g, (ex - g.get_width() / 2, ey - g.get_height() / 2), special_flags=pygame.BLEND_RGB_ADD)
+
+
+def draw_mullo(s, x, y, flap, sc=1.0, glow=True, **pose):
     draw_bat(s, x, y, flap, sc, **MULLO_LOOK, **pose)
+    if glow:
+        mullo_eye_glow(s, x, y, sc, **pose)
 
 
 def draw_bat_tilted(s, x, y, flap, tilt, sc=1.0, **pose):
@@ -214,7 +246,12 @@ def draw_bat_tilted(s, x, y, flap, tilt, sc=1.0, **pose):
     if SS == 1 and abs(tilt) < .02:
         return draw_mullo(s, x, y, flap, sc, **pose)
     big = pygame.Surface((130 * SS, 100 * SS), pygame.SRCALPHA)
-    draw_mullo(big, 65 * SS, 50 * SS, flap, sc * SS, **pose)
+    draw_mullo(big, 65 * SS, 50 * SS, flap, sc * SS, glow=False, **pose)
+    _tilted_blit(s, big, x, y, tilt, SS)
+    mullo_eye_glow(s, x, y, sc, tilt, **pose)                          # el brillo va encima, ya inclinado
+
+
+def _tilted_blit(s, big, x, y, tilt, SS):
     tmp = pygame.transform.smoothscale(big, (130, 100)) if SS > 1 else big
     if abs(tilt) < .02:
         s.blit(tmp, (int(x) - 65, int(y) - 50))
@@ -224,9 +261,11 @@ def draw_bat_tilted(s, x, y, flap, tilt, sc=1.0, **pose):
 
 
 PUP_FUR = ((120, 70, 100), (150, 95, 125), (190, 120, 160))
+PUP_SC = .7                  # tamaño de las crías: el mismo en el suelo, en brazos de Mullo y en el nido
 # cada cría se reconoce de un vistazo: color de pelaje, ojos y un detalle propio
 PUP_LOOKS = {
-    'Chispa':   dict(fur=PUP_FUR, eyes='big', tuft=(255, 170, 80), bouncy=True),                                # mechón naranja
+    # Chispa (5.4): «redonda y diminuta», violeta rosado, ojos grandes, «mechón naranja en el pecho»; «todavía no vuela bien»
+    'Chispa':   dict(fur=PUP_FUR, eyes='big', tuft=(255, 170, 80), tuft_y=-1, chubby=True, flap_k=.7, bouncy=True),
     'Bruno':    dict(fur=((106, 76, 78), (138, 102, 98), (178, 140, 128)), eyes='closed', zzz=True, chubby=True),
     'Lía':      dict(fur=((140, 72, 110), (178, 100, 142), (222, 140, 182)), eyes='big', tears=True, bow=(255, 120, 170)),
     'Nube':     dict(fur=((150, 140, 176), (186, 176, 206), (228, 218, 242)), eyes='big', tremble=True, fluff=True),
@@ -250,13 +289,13 @@ def _pup_body(s, x, y, flap, sc, lk, t, cry, scared=False):
         for k in range(10):
             a = k * TAU / 10
             pygame.draw.circle(s, edge, (int(x + math.cos(a) * 8 * sc), int(y + 3 * sc + math.sin(a) * 10 * sc)), max(2, int(4.4 * sc)))
-    draw_bat(s, x, y, flap * .6 + .5, sc, col, body, edge, eye=body, wing=.8)
+    draw_bat(s, x, y, flap * .6 * lk.get('flap_k', 1.0) + .5, sc, col, body, edge, eye=body, wing=.8)
     if lk.get('chubby'):                                                 # pancita redonda que respira
         br = 1 + .08 * math.sin(t * 1.6)
         pygame.draw.ellipse(s, body, (x - 10 * sc * br, y - 4 * sc, 20 * sc * br, 20 * sc))
         pygame.draw.ellipse(s, edge, (x - 6 * sc * br, y + 2 * sc, 12 * sc * br, 11 * sc))
     if lk.get('tuft'):                                                   # mechón esponjado en la pancita
-        tuft_belly(s, x, y + 4 * sc, max(sc, .6), lk['tuft'], t)
+        tuft_belly(s, x, y + lk.get('tuft_y', 4) * sc, max(sc, .6), lk['tuft'], t)
     # --- cabeza grande y redonda (más tierna)
     hx, hy = x, y - 9 * sc
     hr = 8.6 * sc
@@ -377,8 +416,9 @@ def nap_look(lk, asleep):
 
 
 def pup_extras(s, x, y, lk, t, cry=False):
-    """Detalles que flotan alrededor de la cría (se dibujan sobre la oscuridad): rasgo propio, zzz, ondas de eco."""
-    _pup_marks(s, x, y, .6, lk, t, lit=True)
+    """Lo que flota alrededor de la cría (se dibuja sobre la oscuridad): burbujita y zzz, ondas de eco.
+    El rasgo propio (mechón, moño, manchita...) ya va pintado en su cuerpo y se mueve con ella: no se repite aquí
+    (antes se volvía a pintar fijo y se quedaba flotando cuando la cría brincaba o pasaba Mullo encima)."""
     if lk.get('zzz'):                                                    # burbujita de dormilona que crece y se revienta
         q = (t * .35) % 1
         if q < .85:
@@ -435,93 +475,130 @@ def draw_pup(s, x, y, flap, lean=0.0, sc=.55, name=None, t=0.0, cry=False, scare
 SPIDER_LOOK = ((8, 6, 10), (24, 18, 26), (70, 48, 70))      # patas, cuerpo, borde
 
 
+def _rot(x, y, face, k):
+    """Ayudante: convierte coordenadas locales (adelante = +x) a la pantalla, girando según hacia dónde mira."""
+    ca, sa = math.cos(face), math.sin(face)
+    return lambda px, py: (x + (px * ca - py * sa) * k, y + (px * sa + py * ca) * k)
+
+
+def _blob(P, cx, cy, rx, ry, n=20):
+    return [P(cx + rx * math.cos(q), cy + ry * math.sin(q)) for q in [i * TAU / n for i in range(n)]]
+
+
 def draw_spider(s, x, y, anim, size=1.0, face=0.0):
-    legs, body, edge = SPIDER_LOOK
-    for k in range(8):                                                   # ocho patas que se mueven alternadas
-        a = TAU * k / 8 + .2 + math.sin(anim * 8 + (k % 2) * math.pi) * .25
-        pygame.draw.lines(s, legs, False, [(x, y), (x + math.cos(a) * 14 * size, y + math.sin(a) * 14 * size - 4),
-                                           (x + math.cos(a) * 24 * size, y + math.sin(a) * 24 * size)], 3)
-    ax, ay = x - math.cos(face) * 7 * size, y - math.sin(face) * 7 * size        # abdomen
-    pygame.draw.circle(s, body, (int(ax), int(ay)), int(12 * size))
-    pygame.draw.circle(s, edge, (int(ax), int(ay)), int(12 * size), 2)
-    pygame.draw.line(s, (120, 60, 90), (ax - 4 * size, ay), (ax + 4 * size, ay), 2)      # marca en el lomo
-    hx, hy = x + math.cos(face) * 6 * size, y + math.sin(face) * 6 * size
-    pygame.draw.circle(s, body, (int(hx), int(hy)), int(7 * size))
-    pygame.draw.circle(s, edge, (int(hx), int(hy)), int(7 * size), 1)
+    """Araña (propuesta 5.3): «cuerpo negro con borde oscuro, una marca en el lomo y ocho patas largas»;
+    «mueven sus ocho patas casi sin avanzar» (las patas tiemblan en su lugar)."""
+    k = size
+    P = _rot(x, y, face, k)
+    black, border, leg = (12, 10, 14), (46, 36, 50), (10, 8, 12)
+    # Andar de araña de verdad: las ocho patas van en dos grupos alternados (L1-R2-L3-R4 y R1-L2-R3-L4).
+    # anim = ciclos de paso (Enemy.gait avanza con lo que se mueve el cuerpo): con pasos cortos, las patas
+    # se mueven mucho y el cuerpo poco, «casi sin avanzar». Cada pata se levanta, va hacia adelante y se apoya
+    # (luego, apoyada, se va quedando atrás mientras el cuerpo avanza).
+    SW = .38                                                                 # fracción del ciclo en el aire
+    for sd in (-1, 1):
+        for i, (ang, reach) in enumerate(((.5, 28), (1.1, 24), (1.95, 24), (2.6, 28))):
+            ph = (anim + (((i + (sd > 0)) % 2) * .5) + i * .04) % 1.0
+            if ph < SW:                                                      # en el aire: hacia adelante y arriba
+                q = ph / SW
+                q = q * q * (3 - 2 * q)
+                off = .22 - .44 * q
+                lift = math.sin(math.pi * ph / SW)
+            else:                                                            # apoyada: se queda atrás
+                q = (ph - SW) / (1 - SW)
+                off = -.22 + .44 * q
+                lift = 0.0
+            a = ang + off
+            root = P(3 + (1.5 - i) * 1.3, sd * 3)
+            kr = reach * (.48 + .08 * lift)                                  # al levantarla la rodilla sube
+            knee = P(3 + math.cos(a) * kr, sd * (6 + 2.5 * lift + math.sin(a) * kr))
+            kb = a + (-.28 if i < 2 else .28)
+            fr = reach * (1 - .1 * lift)                                     # y la punta se recoge un poco
+            foot = P(3 + math.cos(kb) * fr, sd * (3 + math.sin(kb) * fr))
+            for w, col in ((5, border), (3, leg)):                          # pata negra con borde oscuro
+                pygame.draw.line(s, col, root, knee, w)
+                pygame.draw.line(s, col, knee, foot, w - 1)
+    # abdomen y cefalotórax: negro con borde oscuro
+    pygame.draw.polygon(s, border, _blob(P, -7, 0, 13.5, 11.5))
+    pygame.draw.polygon(s, black, _blob(P, -7, 0, 12, 10))
+    pygame.draw.polygon(s, border, _blob(P, 4.5, 0, 7.5, 6.5, 16))
+    pygame.draw.polygon(s, black, _blob(P, 4.5, 0, 6.2, 5.2, 16))
+    pygame.draw.arc(s, (34, 28, 38), pygame.Rect(*P(-15, -7), max(2, int(10 * k)), max(2, int(7 * k))), .4, 2.4, 1)
+    # una marca en el lomo (una sola, al centro del abdomen)
+    mark = [P(-2.5, 0), P(-6.5, -3.2), P(-12, 0), P(-6.5, 3.2)]
+    pygame.draw.polygon(s, (128, 44, 62), mark)
+    pygame.draw.polygon(s, (170, 70, 88), mark, 1)
 
 
 def draw_beetle(s, x, y, anim, face, size=1.1):
-    """Escarabajo acorazado visto desde arriba (élitros con brillo metálico)."""
+    """Escarabajo (propuesta 5.3): «caparazón azul petróleo con brillo metálico, seis patas cortas y dos antenas»;
+    «pasos cortos y tercos»."""
     k = size
-    ca, sa = math.cos(face), math.sin(face)
-
-    def P(px, py):
-        return (x + (px * ca - py * sa) * k, y + (px * sa + py * ca) * k)
-
-    leg = (20, 18, 30)
-    for sd in (-1, 1):
-        for i, lx in enumerate((-6, 1, 8)):
-            w = math.sin(anim * 13 + (i + (sd > 0)) % 2 * math.pi) * 2.4        # pasos cortos, rápidos y tercos
-            pygame.draw.lines(s, leg, False, [P(lx, sd * 8), P(lx + w, sd * 15), P(lx + 4 + w, sd * 20)], 3)
+    P = _rot(x, y, face, k)
+    leg = (14, 18, 24)
+    pygame.draw.ellipse(s, (8, 10, 14), pygame.Rect(x - 15 * k, y - 9 * k + 3, 30 * k, 20 * k))
+    for sd in (-1, 1):                                                       # seis patas cortas, pasos tercos
+        for i, lx in enumerate((-5, 2, 8)):
+            w = math.sin(anim * 13 + (i + (sd > 0)) % 2 * math.pi) * 2.2
+            back = (i - 1) * 2.5
+            pts = [P(lx, sd * 8), P(lx + back * .5 + w, sd * 13), P(lx + back + w + 2, sd * 16.5)]
+            pygame.draw.lines(s, leg, False, pts, 3)
     aw = math.sin(anim * 7) * 2
-    pygame.draw.lines(s, leg, False, [P(15, -3), P(22, -8 - aw), P(26, -6 - aw)], 2)        # antenas curiosas
-    pygame.draw.lines(s, leg, False, [P(15, 3), P(22, 8 + aw), P(26, 6 + aw)], 2)
-    shell = [P(-15, 0), P(-11, -10), P(2, -12), P(11, -8), P(13, 0), P(11, 8), P(2, 12), P(-11, 10)]
-    pygame.draw.polygon(s, (26, 44, 60), shell)
-    pygame.draw.polygon(s, (90, 150, 170), shell, 2)
-    pygame.draw.line(s, (10, 18, 26), P(-15, 0), P(9, 0), 2)                         # separación de los élitros
-    pygame.draw.line(s, (150, 210, 220), P(-6, -6), P(4, -8), 2)                       # brillo
-    head = [P(11, -6), P(17, -4), P(18, 4), P(11, 6)]
-    pygame.draw.polygon(s, (18, 26, 36), head)
-    for sd in (-1, 1):                                                   # ojitos
-        ex, ey = P(15, sd * 3)
-        pygame.draw.circle(s, (220, 236, 240), (int(ex), int(ey)), max(1, int(1.8 * k)))
-        pygame.draw.circle(s, (10, 16, 22), (int(ex), int(ey)), max(1, int(.9 * k)))
+    for sd in (-1, 1):                                                       # dos antenas
+        pygame.draw.lines(s, leg, False, [P(16, sd * 2.5), P(21, sd * (6 + aw * sd * .5)), P(26, sd * (7 + aw * sd))], 2)
+    # caparazón azul petróleo con brillo metálico (degradado, reflejo y borde brillante)
+    shell = [P(13, 0), P(11, -8), P(4, -12), P(-6, -12), P(-13, -8), P(-16, 0), P(-13, 8), P(-6, 12), P(4, 12), P(11, 8)]
+    pygame.draw.polygon(s, (18, 46, 58), shell)
+    for sd in (-1, 1):
+        pygame.draw.polygon(s, (28, 70, 86), [P(9, sd * 2), P(3, sd * 9), P(-6, sd * 9.5), P(-12, sd * 5), P(-12, sd * 2)])
+    pygame.draw.polygon(s, (110, 180, 196), shell, 2)
+    pygame.draw.line(s, (8, 22, 30), P(8, 0), P(-16, 0), 2)
+    for (a0, a1, col, w) in (((-6, -6.5), (5, -8), (215, 245, 250), 2), ((-11, -4), (-7, -6), (150, 215, 228), 1),
+                             ((-4, 6.5), (3, 7.5), (90, 160, 178), 1)):
+        pygame.draw.line(s, col, P(*a0), P(*a1), w)
+    head = [P(12, -5), P(17, -3.5), P(17.5, 3.5), P(12, 5)]
+    pygame.draw.polygon(s, (12, 26, 34), head)
+    pygame.draw.polygon(s, (70, 130, 146), head, 1)
 
 
 def draw_centipede(s, e, cam, boss=False):
-    """Cazador (ciempiés) o el Gran Ciempiés: cuerpo segmentado que sigue a la cabeza."""
-    segs = e.segs
-    seg_col = (70, 26, 18) if not boss else (54, 18, 22)
-    edge = (200, 90, 50) if not boss else (220, 70, 60)
-    sleeping = boss and e.state == 'sleep'
-    for i in range(len(segs) - 1, -1, -1):
-        sx, sy = cam.apply(*segs[i])
-        if i + 1 < len(segs):
-            nx, ny = cam.apply(*segs[i + 1])
-        else:
-            nx, ny = cam.apply(*segs[i - 1]) if i else (sx - 1, sy)
-            nx, ny = 2 * sx - nx, 2 * sy - ny
-        ang = math.atan2(sy - ny, sx - nx)
-        r = (6 if not boss else 15) * (1 - .35 * i / max(1, len(segs)))
-        for sd in (-1, 1):                                                   # patas
-            w = math.sin(e.anim * (16 if not boss else 6) + i * 1.3 + sd) * .5
-            la = ang + sd * (math.pi / 2 + w * .6)
-            L = r * 2.0
-            pygame.draw.line(s, (30, 14, 10), (sx, sy), (sx + math.cos(la) * L, sy + math.sin(la) * L), 2 if not boss else 4)
-        pygame.draw.circle(s, seg_col, (int(sx), int(sy)), int(r))
-        pygame.draw.circle(s, edge, (int(sx), int(sy)), int(r), 2 if not boss else 3)
-        if boss and i % 2 == 0:
-            pygame.draw.circle(s, (120, 40, 40), (int(sx), int(sy)), int(r * .45))
+    """Cazador (propuesta 5.3): «siete segmentos café rojizo con borde naranja y pinzas al frente; en la oscuridad
+    solo se les ven los ojos rojos»; «ondulan el cuerpo como los ciempiés de verdad»."""
+    segs, t = e.segs, e.anim
+    n = len(segs)
+    plate, edge, leg = (104, 44, 26), (236, 126, 52), (56, 22, 14)
     hx, hy = cam.apply(e.x, e.y)
+    chain = [(hx, hy)] + [cam.apply(*p) for p in segs[:7]]                   # siete segmentos
+    m = len(chain) - 1
+    for i in range(m, 0, -1):
+        sx, sy = chain[i]
+        ox, oy = chain[i - 1]
+        ang = math.atan2(oy - sy, ox - sx)
+        r = 6.4 * (1 - .28 * (i - 1) / max(1, m))
+        P = _rot(sx, sy, ang, 1)
+        for sd in (-1, 1):                                                   # patas que corren en ola
+            w = math.sin(t * 16 + i * 1.3 + sd) * .55
+            la = sd * (math.pi / 2 + w * .5)
+            kx, ky = math.cos(la) * r * 1.5, math.sin(la) * r * 1.5
+            pygame.draw.lines(s, leg, False, [P(0, sd * r * .5), P(kx, ky), P(kx - 2.5, ky + sd * r * .6)], 2)
+        body = [P(-r * .75, 0), P(-r * .4, -r), P(r * .5, -r * 1.02), P(r * .85, 0), P(r * .5, r * 1.02), P(-r * .4, r)]
+        pygame.draw.polygon(s, plate, body)
+        pygame.draw.polygon(s, edge, body, 2)
     a = e.face
-    hr = 8 if not boss else 22
-    pygame.draw.circle(s, (40, 12, 10), (int(hx), int(hy)), hr)
-    pygame.draw.circle(s, edge, (int(hx), int(hy)), hr, 2)
-    for sd in (-1, 1):                                                      # pinzas / antenas
-        b = a + sd * .5
-        pygame.draw.lines(s, edge, False, [(hx + math.cos(a) * hr * .7, hy + math.sin(a) * hr * .7),
-                                           (hx + math.cos(b) * hr * 1.7, hy + math.sin(b) * hr * 1.7),
-                                           (hx + math.cos(a + sd * .1) * hr * 2.0, hy + math.sin(a + sd * .1) * hr * 2.0)],
-                          2 if not boss else 4)
-    if boss:
-        if sleeping:                                                        # ojos cerrados y "Z"
-            for sd in (-1, 1):
-                ex, ey = hx + math.cos(a + sd * .6) * hr * .6, hy + math.sin(a + sd * .6) * hr * .6
-                pygame.draw.line(s, (200, 120, 90), (ex - 4, ey), (ex + 4, ey), 2)
-            ph = (e.anim * 2) % 3
-            text(s, F_S, 'z', hx + 26 + ph * 6, hy - 30 - ph * 10, (200, 180, 160))
-            text(s, F_XS, 'z', hx + 40 + ph * 5, hy - 46 - ph * 8, (160, 140, 130))
+    H = _rot(hx, hy, a, 1)
+    hr = 7.5
+    head = [H(-hr * .6, 0), H(-hr * .2, -hr * .9), H(hr * .7, -hr * .75), H(hr * 1.05, 0), H(hr * .7, hr * .75),
+            H(-hr * .2, hr * .9)]
+    pygame.draw.polygon(s, (78, 30, 18), head)
+    pygame.draw.polygon(s, edge, head, 2)
+    snap = .2 + .25 * (.5 + .5 * math.sin(t * 12))
+    for sd in (-1, 1):                                                       # pinzas al frente
+        claw = [H(hr * .6, sd * hr * .45), H(hr * 1.35, sd * hr * (.75 + snap)), H(hr * 1.8, sd * hr * (.2 + snap * .3))]
+        pygame.draw.lines(s, (40, 14, 8), False, claw, 4)
+        pygame.draw.lines(s, edge, False, claw, 2)
+        ex, ey = H(hr * .35, sd * hr * .42)                                 # ojos rojos
+        pygame.draw.circle(s, (255, 50, 36), (int(ex), int(ey)), 2)
+        pygame.draw.circle(s, (255, 200, 170), (int(ex), int(ey)), 1)
 
 
 _BOSS_GLOW = {}
@@ -542,9 +619,10 @@ def draw_boss(s, e, cam):
     segs, t = e.segs, e.anim
     awake = e.state != 'sleep'
     waking = getattr(e, 'waking', 0) > 0
-    jx = (random.uniform(-3, 3) if waking else 0)
+    stir = getattr(e, 'stir', 0.0) if not awake else 0.0              # dormido pero inquieto: se remueve
+    jx = (random.uniform(-3, 3) if waking else math.sin(t * 40) * 1.6 * min(1, stir))
     pulse = .5 + .5 * math.sin(t * (7 if awake else 1.5))
-    breathe = 1 + (.04 * math.sin(t * 2) if not awake else 0)
+    breathe = 1 + (.04 * math.sin(t * 2) + .05 * min(1, stir) if not awake else 0)
     n = len(segs)
     pts = [cam.apply(*p) for p in segs]
     pts = [(x + jx, y) for x, y in pts]
@@ -607,9 +685,12 @@ def draw_boss(s, e, cam):
             if awake:
                 pygame.draw.circle(s, (255, 40 + int(60 * pulse), 20), (int(px), int(py)), er)
                 pygame.draw.circle(s, (255, 230, 160), (int(px), int(py)), max(1, er // 3))
+            elif stir > 0 and k == 0:                                         # inquieto: entreabre los ojos grandes
+                op = max(1, int(er * .7 * min(1, stir)))
+                pygame.draw.ellipse(s, (255, 70, 30), (px - er, py - op / 2, 2 * er, op))
             else:                                                             # dormido: rendijas rojas
                 pygame.draw.line(s, (int(140 + 60 * pulse), 30, 20), (px - er, py), (px + er, py), 2)
-    if not awake:
+    if not awake and stir <= 0:
         ph = (t * 2) % 3
         text(s, F_S, 'z', hx + 30 + ph * 6, hy - 36 - ph * 10, (200, 160, 150))
         text(s, F_XS, 'z', hx + 46 + ph * 5, hy - 52 - ph * 8, (160, 120, 110))
@@ -623,7 +704,7 @@ def draw_enemy(s, x, y, e, cam=None):
     elif e.kind == 'hunter':
         draw_centipede(s, e, cam)
     else:
-        draw_spider(s, x, y, e.anim, e.spec['size'], e.face)
+        draw_spider(s, x, y, getattr(e, 'gait', e.anim), e.spec['size'], e.face)
 
 
 def arrow(s, cx, cy, ang, col, sz=11):
@@ -685,8 +766,8 @@ class Menu:
             s.blit(box, r)
             text(s, F_S if self.horizontal else F_M, label, r.centerx, r.centery, (255, 255, 255) if on else (170, 155, 195), True)
             if on and not self.horizontal:
-                draw_bat(s, r.left + 34, r.centery + 2, self.t * 9, .4)
-                draw_bat(s, r.right - 34, r.centery + 2, self.t * 9 + 1, .4)
+                draw_mullo(s, r.left + 34, r.centery + 2, self.t * 9, .4)
+                draw_mullo(s, r.right - 34, r.centery + 2, self.t * 9 + 1, .4)
 
 
 # ---------------------------------------------------------------- fondo animado (título / instrucciones)
@@ -859,6 +940,8 @@ def draw_hud(s, g):
     from story import clock_text
     text(s, F_M, clock_text(minutes), cx0 + 12, 9, col)
     text(s, F_XS, f'{cfg["act"]} · faltan {int(left // 60)}:{int(left % 60):02d}', cx0 + cw - 12 - F_XS.size(f'{cfg["act"]} · faltan {int(left // 60)}:{int(left % 60):02d}')[0], 17, (190, 180, 215))
+    # --- cronómetro (para competir por el mejor tiempo; se detiene en pausa)
+    draw_timer(s, g, cx0, 68, cw)
     # --- derecha: crías
     panel(s, (W - 222, 8, 214, 56))
     states = []
@@ -874,6 +957,34 @@ def draw_hud(s, g):
     text(s, F_XS, tx, W - 214, 43, C_PUP if g.rescued else (200, 190, 215))
     draw_minimap(s, g)
     draw_guides(s, g)
+
+
+def stopwatch(s, x, y, t, col=(255, 215, 150)):
+    """Iconito de cronómetro con la manecilla girando."""
+    pygame.draw.circle(s, col, (x, y + 1), 7, 2)
+    pygame.draw.rect(s, col, (x - 2, y - 10, 4, 3))
+    a = t * math.tau / 4 - math.pi / 2
+    pygame.draw.line(s, col, (x, y + 1), (x + math.cos(a) * 5, y + 1 + math.sin(a) * 5), 2)
+
+
+def draw_timer(s, g, x, y, w):
+    """Cronómetro de la partida: tiempo total de los 3 niveles (si se juega la historia completa) y el récord."""
+    import scores
+    prog = getattr(getattr(g, 'game', None), 'progress', None) or {}
+    full = bool(prog.get('full_run'))
+    run = prog.get('play_time', g.t) if full else g.t
+    panel(s, (x, y, w, 28))
+    stopwatch(s, x + 18, y + 13, run)
+    text(s, F_S, scores.fmt(run)[:-1], x + 32, y + 4, (255, 240, 215))
+    best = getattr(g, 'best_time', None)
+    if not full:
+        lab, col = 'Tiempo del nivel', (200, 185, 215)
+    elif best is not None:
+        lab = f'Récord {scores.fmt(best)[:-1]}'
+        col = (170, 240, 190) if run <= best else (255, 150, 140)
+    else:
+        lab, col = 'Sin récord aún', (200, 185, 215)
+    text(s, F_XS, lab, x + w - 12 - F_XS.size(lab)[0], y + 6, col)
 
 
 def draw_minimap(s, g, big=False):

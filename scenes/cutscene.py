@@ -128,16 +128,24 @@ class CutsceneScene(Scene):
 
 
 class EndScene(Scene):
-    """Pantalla final: FIN, resumen de la noche y créditos del equipo."""
+    """Pantalla final en dos partes: ¡VICTORIA! (tiempo total de los 3 niveles y récord) y luego FIN con los créditos."""
 
     def __init__(self, game):
         super().__init__(game)
         self.t = 0.0
+        self.dt = 1 / 60
         from art import Departure
         self.shot = Departure()
         self.canvas = pygame.Surface((W, H))
         self.veil = pygame.Surface((W, H), pygame.SRCALPHA)
         self.veil.fill((0, 0, 0, 190))
+        p = getattr(game, 'progress', {}) or {}
+        self.results = None
+        if p.get('full_run'):                              # solo la historia completa entra a la tabla (se guarda sola)
+            from scenes.results import StoryResults
+            self.results = StoryResults(p.get('play_time', 0), game.sounds)
+        self.phase = 'victory'
+        self.fx = None
 
     def enter(self):
         self.game.sounds.stop()
@@ -145,6 +153,15 @@ class EndScene(Scene):
         self.game.sounds.ambient(.2)
 
     def handle(self, ev):
+        if self.phase == 'victory':
+            if self.results is not None:
+                go = self.results.handle(ev)
+            else:
+                go = self.t > 1.0 and ((ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE))
+                                       or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1))
+            if go or (ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE):
+                self.phase, self.t = 'credits', 0.0
+            return
         if self.t > 1.5 and ((ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE))
                              or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1)):
             self.game.sounds.play('menu_select')
@@ -152,18 +169,59 @@ class EndScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        self.dt = dt
+        if self.results is not None and self.phase == 'victory':
+            self.results.update(dt)
+
+    def _draw_victory(self, c):
+        from scenes.results import Particles, glow_title, hint, ease_out_back, _rays
+        p = self.game.progress
+        t = self.t
+        rays = pygame.transform.rotate(_rays(), (t * 10) % 360)
+        c.blit(rays, rays.get_rect(center=(W // 2, 96)))
+        if self.fx is None:
+            self.fx = Particles('clear', 110)
+        self.fx.update(self.dt)
+        self.fx.draw(c)
+        cx = W // 2
+        k = ease_out_back(t / .7)
+        glow_title(c, ui.F_XL, '¡VICTORIA!', cx, 82, (255, 245, 215), (255, 160, 50), t, max(.05, k))
+        ui.text(c, ui.F_S, f'Las {GOAL} crías están a salvo y la colonia parte completa.', cx, 146, (245, 238, 250), True)
+        for i in range(GOAL):
+            ui.pup_icon(c, cx - 99 + i * 22, 174, 'safe', t + i)
+        if self.results is None:
+            tt = p.get('play_time', 0)
+            ui.text(c, ui.F_M, f'Tiempo: {int(tt // 60)}:{tt % 60:05.2f}', cx, 300, C_GOLD, True)
+            ui.text(c, ui.F_XS, 'Para entrar a la tabla de récords juega la historia completa desde «Jugar».',
+                    cx, 344, (200, 185, 230), True)
+            if t > 1.0:
+                hint(c, 'Enter: ver créditos', H - 30)
+            return
+
+        def extra(sc, x, y):
+            ui.text(sc, ui.F_XS, f'Reintentos: {p.get("retries", 0)}   ·   cuenta el tiempo de los reintentos', x, y,
+                    C_PUP, True)
+
+        self.results.draw(c, self.dt, 206, extra)
+        touch = getattr(self.game, 'touch', None)
+        if not (touch is not None and touch.active):
+            hint(c, 'Enter: ver créditos', H - 14)
 
     def draw(self, screen):
         c = self.canvas
         self.shot.draw(c, self.t + 20, 30)
         c.blit(self.veil, (0, 0))
+        if self.phase == 'victory':
+            self._draw_victory(c)
+            screen.blit(c, (0, 0))
+            return
         p = self.game.progress
         cx = W // 2
         ui.text(c, ui.F_XL, 'FIN', cx, 86, (255, 236, 200), True)
         ui.text(c, ui.F_M, '¿El amor puede más que el miedo?', cx, 148, C_GOLD, True)
         ui.text(c, ui.F_S, f'Las {GOAL} crías están a salvo y la colonia parte completa.', cx, 184, (245, 238, 250), True)
         tt = p.get('play_time', 0)
-        ui.text(c, ui.F_XS, f'Tiempo de juego: {int(tt // 60)}:{int(tt % 60):02d}    ·    Reintentos: {p.get("retries", 0)}',
+        ui.text(c, ui.F_XS, f'Tiempo total: {int(tt // 60)}:{tt % 60:05.2f}    ·    Reintentos: {p.get("retries", 0)}',
                 cx, 212, C_PUP, True)
         for i in range(GOAL):
             ui.pup_icon(c, cx - 99 + i * 22, 242, 'safe', self.t + i)

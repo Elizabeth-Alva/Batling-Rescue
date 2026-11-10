@@ -15,7 +15,8 @@ SPECS = {
     # spd: velocidad, hear: oído, det: vista, hp: vida, rad: radio, size: tamaño de dibujo, dmg: daño por contacto,
     # stun: cuánto les afecta el grito / el escudo, push: cuánto los empuja, lose: segundos hasta perder el rastro,
     # leash: distancia máxima a su casa al patrullar (None = libre)
-    'spider': dict(spd=1.0, hear=1.0, det=1.0, hp=2, rad=12, size=1.0, dmg=1, stun=1.0, push=1.0, lose=2.5, leash=320),
+    'spider': dict(spd=1.0, hear=1.0, det=1.0, hp=2, rad=12, size=1.0, dmg=1, stun=1.0, push=1.0, lose=2.5, leash=320,
+                   calm=.6),                  # calm: tranquila camina más lento; al verte, a toda velocidad
     'beetle': dict(spd=.85, hear=1.7, det=.85, hp=4, rad=14, size=1.1, dmg=1, stun=.8, push=.45, lose=3.5, leash=None),
     'hunter': dict(spd=1.55, hear=2.2, det=1.35, hp=3, rad=13, size=1.0, dmg=1, stun=.3, push=.7, lose=1.3, leash=None),
     'boss':   dict(spd=1.0, hear=0.0, det=0.0, hp=10 ** 9, rad=40, size=3.0, dmg=2, stun=.12, push=0.0, lose=99, leash=None),
@@ -46,11 +47,15 @@ class Enemy:
         self.hp, self.state, self.target = self.spec['hp'], 'patrol', None
         self.wait = self.stun = self.lose = self.vx = self.vy = 0.0
         self.anim = random.random() * 9
+        self.gait = random.random()                   # ciclos de paso (las patas siguen lo que avanza el cuerpo)
+        self._gx, self._gy = x, y
         self.path, self.repath = [], random.random() * .6
         self.face = random.uniform(0, math.tau)       # hacia dónde mira
         n, gap = (7, 8) if kind == 'hunter' else (16, 17) if kind == 'boss' else (0, 0)
         self.gap = gap
         self.segs = [(x - math.cos(self.face) * gap * i, y - math.sin(self.face) * gap * i) for i in range(n)]
+
+    STRIDE = 13.0                                     # px que avanza el cuerpo por ciclo de paso (pasos cortos)
 
     @property
     def rad(self):
@@ -80,6 +85,9 @@ class Enemy:
         b, cave, p = g.bat, g.cave, g.diff
         d = math.dist((self.x, self.y), (b.x, b.y))
         self.anim += dt
+        moved = math.hypot(self.x - self._gx, self.y - self._gy)
+        self._gx, self._gy = self.x, self.y
+        self.gait += min(moved, 30) / self.STRIDE + dt * .12      # quieta: solo acomoda las patas de vez en cuando
         if self.stun > 0:
             self.stun -= dt
             self.vx *= .9
@@ -104,7 +112,7 @@ class Enemy:
             if self.lose > spec['lose']:
                 self.state, self.target, self.path = 'patrol', None, []
         elif self.state == 'inv':
-            goal, sp = self.target, p.investigate_speed * spec['spd']
+            goal, sp = self.target, p.investigate_speed * spec['spd'] * spec.get('calm', 1.0)
             patience = 3.5 if self.kind == 'beetle' else 1.8          # los escarabajos son tercos
             if math.dist((self.x, self.y), goal) < 18:
                 self.wait, sp = self.wait + dt, 0
@@ -115,7 +123,7 @@ class Enemy:
             else:
                 self.wait += dt * .25
         else:
-            sp, self.wait = p.patrol_speed * spec['spd'], self.wait + dt
+            sp, self.wait = p.patrol_speed * spec['spd'] * spec.get('calm', 1.0), self.wait + dt
             if not self.target or math.dist((self.x, self.y), self.target) < 18 or self.wait > 8:
                 if spec['leash']:
                     self.target = cave.near_spot(*self.home, spec['leash'])
@@ -179,6 +187,7 @@ class Boss(Enemy):
         self.lair = (x, y)
         self.face = -math.pi / 2
         self.waking = 0.0
+        self.stir = 0.0                                        # se remueve dormido (oyó ruido cerca): advertencia
         n = len(self.segs)                                     # duerme enroscado alrededor de su cabeza
         self.segs = [(x + math.cos(-math.pi / 2 - 1.0 - i * .42) * (28 + i * 2.6) - math.cos(-math.pi / 2 - 1.0) * 28,
                       y + math.sin(-math.pi / 2 - 1.0 - i * .42) * (28 + i * 2.6) - math.sin(-math.pi / 2 - 1.0) * 28)
@@ -200,6 +209,7 @@ class Boss(Enemy):
 
     def update(self, dt, g):
         self.anim += dt * (.25 if self.state == 'sleep' else 1)
+        self.stir = max(0.0, self.stir - dt)
         if self.stun > 0:
             self.stun -= dt
             self._finish(g.cave)

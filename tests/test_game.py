@@ -15,6 +15,8 @@ init_mixer()
 pygame.init()
 
 import difficulty  # noqa: E402
+import scores  # noqa: E402
+scores.use_memory()                     # las pruebas nunca tocan records.json
 import story  # noqa: E402
 from events import EventBus, NoiseEvent, ImpactEvent  # noqa: E402
 from settings import (NEST, NEST_T, GOAL, TILE, W, H, BAT_SPEED, MEMORY_ALPHA, SAFE_R,  # noqa: E402
@@ -483,6 +485,40 @@ class GameTests(unittest.TestCase):
         self.assertEqual(len(s.resting), 1)
         self.assertLess(math.dist((s.resting[0].x, s.resting[0].y), NEST), 40)
 
+    def test_secret_room_doors(self):
+        """Propuesta: la sala secreta está detrás de raíces (I), una cortina de agua (II) o tablas sueltas (III)."""
+        screen = pygame.display.get_surface()
+        for lv, kind in ((1, 'roots'), (2, 'water'), (3, 'boards')):
+            s = self.fresh(lv)
+            cv, d = s.cave, s.cave.secret_door
+            self.assertEqual(d['kind'], kind)
+            tx, ty = d['tile']
+            s.enemies = []
+            b = s.bat
+            b.x, b.y = d['pos'][0] + 60, d['pos'][1]
+            s.camera.x, s.camera.y = d['pos'][0] - W / 2, d['pos'][1] - H / 2
+            s.draw(screen)                                                        # se dibuja cerrada
+            if kind == 'water':
+                self.assertFalse(cv.solid(tx, ty))                               # el agua solo la esconde
+                b.x, b.y = d['pos']
+                s._update_door(1 / 60)
+                self.assertGreater(d['splash'], 0)                               # chapoteo al cruzarla
+            else:
+                self.assertTrue(cv.solid(tx, ty))                                # cerrada: no se pasa
+                if kind == 'roots':
+                    b.x, b.y = d['pos'][0] + 40, d['pos'][1]
+                    s.cd = 0
+                    s.screech()                                                  # el grito rompe las raíces
+                else:
+                    s.screech()                                                  # el grito NO rompe las tablas
+                    self.assertTrue(cv.solid(tx, ty))
+                    b.x, b.y = d['pos'][0] + 30, d['pos'][1]
+                    b.dash_t = .1                                                # el impulso sí
+                    s._update_door(1 / 60)
+                self.assertTrue(d['open'])
+                self.assertFalse(cv.solid(tx, ty))
+            s.draw(screen)
+
     def test_secret_room(self):
         for lv in (1, 2, 3):
             s = self.fresh(lv)
@@ -490,8 +526,9 @@ class GameTests(unittest.TestCase):
             sc = cv.secret
             self.assertIsNotNone(sc)
             web, cv.web = cv.web, set()
+            door, cv.door_block = cv.door_block, set()                           # (con la entrada ya abierta)
             self.assertIsNotNone(cv.path(NEST, sc['center'], walk=False, limit=10 ** 5))   # Mullo puede llegar volando
-            cv.web = web
+            cv.web, cv.door_block = web, door
             self.assertIsNone(cv.path(NEST, sc['center'], walk=True))            # los enemigos no
             self.assertTrue(all(not cv.in_secret(p.x, p.y) for p in s.pups))
             tx, ty = next(iter(sc['room']))
@@ -753,6 +790,8 @@ class GameTests(unittest.TestCase):
                     if sc.boss:
                         sc.boss.x, sc.boss.y = sc.cave.lair
                     sc.update(1 / 60)
+            if isinstance(sc, PlayScene) and g.pending is None and sc.state == 'clear':   # continuar
+                sc.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, unicode='\r'))
             if isinstance(sc, CutsceneScene) and g.pending is None:     # la historia avanza con Espacio
                 sc.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
             sc.update(1 / 10)
@@ -1136,7 +1175,7 @@ class GameTests(unittest.TestCase):
         s.idle_t = 5.0
         pose = s.mullo_pose()
         self.assertEqual(pose.get('mood'), 'happy')
-        self.assertGreater(pose.get('fold', 0), .5)
+        self.assertGreater(pose.get('fold', 0), .3)                 # se abraza un poco, pero sigue aleteando
         for _ in range(60):
             s.update(1 / 60)
         self.assertTrue(s.hearts)
@@ -1181,6 +1220,337 @@ class GameTests(unittest.TestCase):
         g._finger(E(pygame.FINGERDOWN, x=.5, y=.3, finger_id=4, dx=0, dy=0), 0.0)
         self.assertEqual(s.state, 'play')
         s.draw(g.screen)
+
+
+
+class TimeScoreTests(unittest.TestCase):
+    """Récord por completar los 3 niveles (sin nombre) y pantallas de GAME OVER / NIVEL SUPERADO / VICTORIA."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    def setUp(self):
+        scores.use_memory()
+        self.game.progress = self.game.new_progress(0)
+        self.game.progress['full_run'] = True
+        self.game.pending, self.game.fade_dir = None, 0
+
+    @staticmethod
+    def key(k, ch=''):
+        return pygame.event.Event(pygame.KEYDOWN, key=k, unicode=ch)
+
+    def test_fmt(self):
+        self.assertEqual(scores.fmt(123.456), '2:03.46')
+        self.assertEqual(scores.fmt(5), '0:05.00')
+        self.assertEqual(scores.fmt(-3), '0:00.00')
+        self.assertEqual(scores.fmt(59.999), '1:00.00')
+
+    def test_table_sorted_capped_and_nameless(self):
+        times = [500, 300, 700, 100, 900, 600, 200, 800, 400, 1000, 1100, 50]
+        for t in times:
+            scores.add(t)
+        rows = scores.top()
+        self.assertEqual([r['time'] for r in rows], sorted(times)[:scores.TOP_N])
+        self.assertEqual(scores.best(), 50)
+        self.assertNotIn('name', rows[0])
+        self.assertIn('date', rows[0])
+        self.assertIsNone(scores.add(5000))                      # no entra al TOP
+
+    def test_timer_counts_whole_run_and_stops_in_pause(self):
+        self.game.progress['play_time'] = 100.0                   # tiempo de niveles anteriores
+        s = PlayScene(self.game, 2)
+        s.enemies = []
+        for _ in range(30):
+            s.update(1 / 60)
+        self.assertAlmostEqual(self.game.progress['play_time'], 100.5, places=2)
+        s.state = 'pause'
+        for _ in range(30):
+            s.update(1 / 60)
+        self.assertAlmostEqual(self.game.progress['play_time'], 100.5, places=2)
+        s.draw(pygame.display.get_surface())                    # el HUD dibuja el cronómetro sin errores
+
+    def _clear(self, level=1, t=42.5):
+        s = PlayScene(self.game, level)
+        s.t = t
+        s.rescued_here = s.goal_here - 1
+        s.bat.carry = s.pups[0]
+        s.bat.x, s.bat.y = NEST
+        s._pups(0.01)
+        self.assertEqual(s.state, 'clear')
+        return s
+
+    def test_level_clear_saves_nothing_and_waits(self):
+        s = self._clear(1, 42.5)
+        screen = pygame.display.get_surface()
+        for _ in range(120):                                    # ya no avanza solo a los 4.5 s
+            s.update(1 / 20)
+            s.draw(screen)
+        self.assertEqual(s.state, 'clear')
+        self.assertIsNone(self.game.pending)
+        self.assertEqual(scores.top(), [])                       # superar un nivel no guarda récord
+        s.handle(self.key(pygame.K_RETURN, '\r'))
+        self.assertIsNotNone(self.game.pending)
+
+    def test_game_over_screen_buttons(self):
+        s = PlayScene(self.game, 1)
+        s.lose('hp')
+        screen = pygame.display.get_surface()
+        for _ in range(30):
+            s.update(1 / 30)
+            s.draw(screen)
+        s.handle(self.key(pygame.K_RIGHT))                      # «Menú principal»
+        s.handle(self.key(pygame.K_RETURN, '\r'))
+        self.assertEqual(self.game.pending[0], 'title')
+        self.game.pending, self.game.fade_dir = None, 0
+        s.handle(self.key(pygame.K_r, 'r'))                      # R: reintentar
+        self.assertEqual(self.game.pending[0], 'play')
+
+    def test_old_lose_message_and_initials_are_gone(self):
+        import inspect
+        from scenes import overlays, results
+        src = inspect.getsource(overlays) + inspect.getsource(results)
+        self.assertNotIn('se refugia en lo alto', src)
+        self.assertNotIn('iniciales', src.lower())
+        self.assertIn('GAME OVER', src)
+
+    def test_victory_saves_total_time_automatically(self):
+        from scenes.cutscene import EndScene
+        self.game.progress['play_time'] = 600.0
+        e = EndScene(self.game)
+        self.assertEqual(scores.best(), 600.0)                   # se guardó solo, sin pedir nada
+        self.assertEqual(e.results.place, 0)
+        screen = pygame.display.get_surface()
+        for _ in range(30):
+            e.update(1 / 20)
+            e.draw(screen)
+        e.handle(self.key(pygame.K_RETURN, '\r'))                # créditos
+        self.assertEqual(e.phase, 'credits')
+        e.draw(screen)
+
+    def test_partial_run_does_not_enter_table(self):
+        from scenes.cutscene import EndScene
+        self.game.progress['full_run'] = False
+        self.game.progress['play_time'] = 100.0
+        e = EndScene(self.game)
+        self.assertIsNone(e.results)
+        self.assertEqual(scores.top(), [])
+
+    def test_dawn_shows_colony_leaving_then_game_over(self):
+        from scenes.results import dawn_scene_on, DAWN_T
+        s = PlayScene(self.game, 1)
+        s.t = s.cfg['duration'] + 1                                # se acabó la noche
+        s.update(1 / 60)
+        self.assertEqual((s.state, s.lose_reason), ('over', 'dawn'))
+        screen = pygame.display.get_surface()
+        for _ in range(20):
+            s.update(1 / 20)
+            s.draw(screen)
+        self.assertTrue(dawn_scene_on(s))                          # primero: la colonia se va sin Mullo
+        s.handle(self.key(pygame.K_r, 'r'))                        # R no reintenta todavía: solo salta la escena
+        self.assertIsNone(self.game.pending)
+        self.assertFalse(dawn_scene_on(s))
+        for _ in range(20):
+            s.update(1 / 20)
+            s.draw(screen)
+        s.handle(self.key(pygame.K_r, 'r'))                        # ya en GAME OVER: reintentar
+        self.assertEqual(self.game.pending[0], 'play')
+
+    def test_hp_loss_has_no_colony_scene(self):
+        from scenes.results import dawn_scene_on
+        s = PlayScene(self.game, 1)
+        s.lose('lives')
+        self.assertFalse(dawn_scene_on(s))
+
+    def test_mullo_keeps_flapping_when_idle(self):
+        s = PlayScene(self.game, 1)
+        s.idle_t = 4.5                                             # en pleno «abrazo» de reposo
+        pose = s.mullo_pose()
+        self.assertLessEqual(pose.get('fold', 0), .45 + 1e-9)       # sin cría casi no encoge las alas
+        import inspect
+        self.assertNotIn("1.0 + .15 * math.sin(self.t * 2)", inspect.getsource(PlayScene.draw))
+
+    def test_pup_ping_only_when_near_and_offscreen(self):
+        from events import NoiseEvent
+        s = PlayScene(self.game, 1)
+        b = s.bat
+        s.camera.x, s.camera.y = b.x - W / 2, b.y - H / 2
+        s.on_noise(NoiseEvent(b.x + 600, b.y, 200, (0, 0, 0), 'pup'))     # cerca y fuera de la vista: aviso
+        self.assertEqual(len(s.pings), 1)
+        s.on_noise(NoiseEvent(b.x + 1500, b.y, 200, (0, 0, 0), 'pup'))    # muy lejos: nada
+        s.on_noise(NoiseEvent(b.x + 100, b.y, 200, (0, 0, 0), 'pup'))     # en pantalla: nada
+        self.assertEqual(len(s.pings), 1)
+        s.draw(pygame.display.get_surface())
+        for _ in range(100):
+            s.update(1 / 60)
+        self.assertEqual(s.pings, [])
+
+    def test_rockfall_on_roar(self):
+        s = PlayScene(self.game, 3)
+        s.enemies = []
+        b = s.bat
+        b.x, b.y = s.cave.lair
+        b.vx = b.vy = 0
+        s._rockfall()
+        self.assertGreaterEqual(len(s.rocks), 1)
+        s.rocks = [[b.x, b.y, 0.0, False]]                         # una justo encima de Mullo
+        hp = b.hp
+        screen = pygame.display.get_surface()
+        for _ in range(70):
+            s._update_rocks(1 / 60)
+            s.draw(screen)
+        self.assertAlmostEqual(b.hp, hp - s.ROCK_DMG)              # medio corazón
+        s.rocks, b.inv = [[b.x, b.y, 0.0, False]], 0
+        b.shield_t = 3
+        for _ in range(70):
+            s._update_rocks(1 / 60)
+        self.assertAlmostEqual(b.hp, hp - s.ROCK_DMG)              # con escudo no duele
+
+    def test_act_ambience_is_light_and_fixed(self):
+        """Esporas (I) y polvo/tierrita (III): número fijo de partículas que se reciclan; nada en el Acto II."""
+        import ambient
+        screen = pygame.display.get_surface()
+        for lv, n in ((1, ambient.ActAmbience.SPORES), (2, 0), (3, ambient.ActAmbience.DUST + ambient.ActAmbience.GRIT)):
+            s = PlayScene(self.game, lv)
+            s.enemies = []
+            self.assertEqual(len(s.act_fx.p), n)
+            for _ in range(240):
+                s.update(1 / 30)
+            self.assertEqual(len(s.act_fx.p), n)                    # no crece: se reciclan
+            s.draw(screen)
+
+    def test_designs_follow_proposal(self):
+        import ui
+        self.assertIsNone(ui.MULLO_LOOK['blush'])                   # Mullo sin cachetitos
+        self.assertLess(sum(ui.MULLO_LOOK['body']), 140)            # «casi negro»
+        lk = ui.PUP_LOOKS['Chispa']
+        self.assertTrue(lk['chubby'] and lk['tuft_y'] < 0)          # redonda, mechón en el pecho
+        screen = pygame.display.get_surface()
+        for kind in ('spider', 'beetle', 'hunter'):
+            e = Enemy(200, 200, kind)
+            ui.draw_enemy(screen, 200, 200, e, Camera(0, 0))
+        ui.draw_bat_tilted(screen, 300, 300, 1.0, .3)
+        ui.draw_pup(screen, 100, 100, 1.0, 0.0, .55, 'Chispa', 1.0)
+
+    def test_spider_gait_follows_movement(self):
+        """Las patas de la araña avanzan con lo que se mueve su cuerpo (y casi nada si está quieta)."""
+        s = PlayScene(self.game, 1)
+        e = Enemy(*NEST, 'spider')                                  # en el nido no hay paredes que la empujen
+        e.stun = 5                                                  # que no camine sola durante la prueba
+        g0 = e.gait
+        e.update(1 / 60, s)
+        idle = e.gait - g0
+        e.x += 13                                                   # el cuerpo avanzó un paso
+        g1 = e.gait
+        e.update(1 / 60, s)
+        self.assertLess(idle, .01)
+        self.assertGreater(e.gait - g1, .9)
+
+    def test_spider_calm_then_fast_and_hit_eyes(self):
+        from enemies import SPECS
+        self.assertLess(SPECS['spider']['calm'], 1.0)                # tranquila: más lenta
+        s = PlayScene(self.game, 1)
+        s.enemies = []
+        b = s.bat
+        e = Enemy(b.x + 60, b.y, 'spider')
+        e.state, e.stun = 'patrol', 1.0                              # recién golpeada: se le ven los ojos
+        s.enemies = [e]
+        s.draw(pygame.display.get_surface())
+
+    def test_xolthar_stirs_in_sleep_with_noise(self):
+        s = PlayScene(self.game, 3)
+        bo = s.boss
+        from events import NoiseEvent
+        s.on_noise(NoiseEvent(bo.x + 200, bo.y, 170, (0, 0, 0), 'screech'))
+        self.assertGreater(bo.stir, 0)
+        self.assertEqual(bo.state, 'sleep')                          # solo se remueve: no despierta
+        s.draw(pygame.display.get_surface())
+        bo.stir = 0
+        s.on_noise(NoiseEvent(bo.x + 60, bo.y, 200, (0, 0, 0), 'pup'))   # el chillido de las gemelas no cuenta
+        self.assertEqual(bo.stir, 0)
+
+    def test_rail_cart_rolls_and_stuns(self):
+        s = PlayScene(self.game, 3)
+        s.enemies = []
+        self.assertTrue(s.rail_carts)
+        rc = s.rail_carts[0]
+        b = s.bat
+        b.x, b.y, b.dash_t = rc.x - 20, rc.y, .15
+        b.dash_dir = (math.cos(rc.ang), math.sin(rc.ang))
+        s._props(1 / 60)
+        self.assertTrue(rc.moving)
+        ax, ay, _ = rc._at(rc.u + 40 * (1 if rc.v > 0 else -1))
+        h = Enemy(ax, ay, 'hunter')
+        s.enemies = [h]
+        for _ in range(20):
+            s._props(1 / 60)
+        self.assertGreater(h.stun, 0)                                # atropellado: aturdido
+        for _ in range(400):
+            rc.update(1 / 60)
+        self.assertFalse(rc.moving)                                  # se frena sola
+        s.draw(pygame.display.get_surface())
+
+    def test_ears_and_fungi(self):
+        s = PlayScene(self.game, 1)
+        s.enemies = []
+        b = s.bat
+        p = s.pups[0]
+        b.x, b.y = p.x - 200, p.y                                   # cría a la derecha, aún sin encontrar
+        p.found = False
+        for _ in range(30):
+            s._update_ear(1 / 30)
+        self.assertGreater(s._ear[0], .3)                            # las orejas apuntan hacia ella
+        s.cd = 0
+        s.screech()
+        self.assertIsNotNone(s.fungi_wave)                           # los hongos se encienden con el grito
+        s.draw(pygame.display.get_surface())
+
+    def test_cancan_song(self):
+        snd = self.game.sounds
+        self.assertTrue(os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                                    'assets', 'music', 'cancan.ogg')))
+        from scenes.title import TitleScene
+        from scenes.records import RecordsScene
+        from scenes.cutscene import EndScene
+        TitleScene(self.game).enter()                             # suena en el menú...
+        self.assertEqual(snd.song_name, 'cancan')
+        RecordsScene(self.game).enter()                           # ...sigue en Récords sin reiniciarse
+        self.assertEqual(snd.song_name, 'cancan')
+        PlayScene(self.game, 1).enter()                           # al jugar se apaga
+        self.assertIsNone(snd.song_name)
+        EndScene(self.game).enter()                               # y ya no suena en la victoria
+        self.assertIsNone(snd.song_name)
+        self.assertFalse(snd.song('no_existe'))                  # sin archivo: el juego sigue sin canción
+
+    def test_title_scene_follows_song(self):
+        from scenes.title import TitleScene, scene_for
+        self.assertEqual([scene_for(t) for t in (0, 5, 10.7, 40, 64.2, 120)], [1, 1, 2, 2, 3, 3])
+        ts = TitleScene(self.game)
+        ts.enter()
+        snd = self.game.sounds
+        screen = pygame.display.get_surface()
+        snd.song_start = pygame.time.get_ticks() - 30_000          # la canción "va" en el segundo 30: parte rápida
+        ts.update(1 / 60)
+        self.assertEqual(ts.cover.level, 2)
+        ts.draw(screen)                                            # dibuja durante el fundido
+        snd.song_start = pygame.time.get_ticks() - 70_000
+        ts.update(1 / 60)
+        self.assertEqual(ts.cover.level, 3)
+        snd.song_start = pygame.time.get_ticks() - int(snd.song_len * 1000) - 2_000   # se repitió: vuelve al 1
+        ts.update(1 / 60)
+        self.assertEqual(ts.cover.level, 1)
+        for _ in range(3):
+            ts.update(.5)
+            ts.draw(screen)
+        snd.stop()
+
+    def test_records_scene_draws(self):
+        from scenes.records import RecordsScene
+        scores.add(812.3)
+        r = RecordsScene(self.game)
+        r.update(1 / 60)
+        r.draw(pygame.display.get_surface())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,10 @@ def stage():
         for fn in os.listdir(scenes_img):
             if fn.lower().endswith((".png", ".jpg", ".jpeg")):
                 shutil.copy(os.path.join(scenes_img, fn), dest)
+    music = os.path.join(ROOT, "assets", "music")                       # canciones (.ogg): el Can-Can de la victoria
+    if os.path.isdir(music):
+        shutil.copytree(music, os.path.join(APP, "assets", "music"),
+                        ignore=shutil.ignore_patterns("*.txt", "*.md"))
     logo = os.path.join(ROOT, "assets", "logo.png")                   # logo oficial (portada) y favicon del sitio
     if os.path.exists(logo):
         shutil.copy(logo, os.path.join(APP, "assets"))

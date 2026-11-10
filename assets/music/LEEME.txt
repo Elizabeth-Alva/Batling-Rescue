@@ -1,0 +1,8 @@
+cancan.ogg  ·  "Galop infernal" (Can-Can) de Orphée aux Enfers, Jacques Offenbach (1858).
+Canción completa (2:09) en ciclo. La portada cambia de cueva con ella (SONG_SCENES en scenes/title.py).
+La composición es de dominio público. La grabación se tomó de un video de YouTube
+(«Offenbach - Can Can Music»); antes de publicar el juego (GitHub Pages / itch.io) confirmen
+la licencia de esa grabación o cámbienla por una de dominio público (Musopen, Wikimedia Commons)
+con el mismo nombre de archivo. Si se borra el archivo, el juego sigue funcionando sin la canción.
+
+Se usa solo en el menú (portada, instrucciones y récords). Volumen: MENU_SONG_VOL en sound.py.

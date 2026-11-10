@@ -66,11 +66,15 @@ class Game:
     @staticmethod
     def new_progress(step=0):
         # mejoras de Mullo (una por acto, por la historia): reader (I), decided (II), air (III)
-        return dict(step=step, reader=False, decided=False, air=False, retries=0, play_time=0.0, rescued=0)
+        # play_time: tiempo jugado (sin pausas ni cinemáticas, incluye los reintentos) -> récord de la historia
+        # full_run: la partida empezó desde el prólogo (solo así cuenta para la tabla de la historia completa)
+        return dict(step=step, reader=False, decided=False, air=False, retries=0, play_time=0.0, rescued=0,
+                    full_run=False)
 
     def start_story(self):
         """Historia completa desde el prólogo."""
         self.progress = self.new_progress(0)
+        self.progress['full_run'] = True
         self._goto_step()
 
     def start_level(self, level):
@@ -110,12 +114,13 @@ class Game:
         from scenes.instructions import InstructionsScene
         from scenes.play import PlayScene
         from scenes.cutscene import CutsceneScene, EndScene
+        from scenes.records import RecordsScene
         if name == 'play':                           # generar la cueva tarda un instante
             self.screen.fill((0, 0, 0))
             ui.text(self.screen, ui.F_M, 'La cueva cambia cada noche...', W // 2, H // 2, (170, 150, 210), True)
             pygame.display.flip()
         return {'title': TitleScene, 'instructions': InstructionsScene, 'play': PlayScene,
-                'cut': CutsceneScene, 'end': EndScene}[name](self, **kw)
+                'cut': CutsceneScene, 'end': EndScene, 'records': RecordsScene}[name](self, **kw)
 
     def goto(self, name, **kw):
         if self.pending is None:

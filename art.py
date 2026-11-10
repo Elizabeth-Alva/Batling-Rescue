@@ -214,7 +214,6 @@ def canela_sil(s, x, y, t, sc=1.25, rim=None, talk=False, hang=False, look=0.0, 
             ex, ey = hx + sd * 2.6 * sc, hy - 1.4 * sc
             pygame.draw.circle(s, c['eyes'], (int(ex), int(ey)), max(1, int(1.5 * sc)))
             pygame.draw.circle(s, (230, 220, 200), (int(ex), int(ey)), max(1, int(1.5 * sc)), 1)   # ojos ya opacos
-            pygame.draw.circle(s, c['blush'], (int(hx + sd * 4.4 * sc), int(hy + 1.6 * sc)), max(1, int(1.1 * sc)))
         return
     nod = (.13 * math.sin(t * 6.5) + .05 * math.sin(t * 11)) if talk else .03 * math.sin(t * .8)
     a = math.pi + look * .3 + nod                                     # boca abajo, como en el Word
@@ -277,9 +276,6 @@ def canela_sil(s, x, y, t, sc=1.25, rim=None, talk=False, hang=False, look=0.0, 
     pygame.draw.circle(s, rim, (int(hx), int(hy)), hr, max(1, int(sc * .6)))
     mx, my = Hd(0, 3.8)
     pygame.draw.ellipse(s, (192, 182, 172), (mx - 3 * sc, my - 2 * sc, 6 * sc, 4 * sc))             # hocico canoso
-    for sd in (-1, 1):                                                # mejillas rosadas (cara amable)
-        bx_, by_ = Hd(sd * 5.6, 1.6)
-        pygame.draw.circle(s, c['blush'], (int(bx_), int(by_)), max(1, int(1.4 * sc)))
     nx_, ny_ = Hd(0, 5.4)
     pygame.draw.circle(s, (56, 36, 34), (int(nx_), int(ny_)), max(1, int(1.1 * sc)))               # nariz
     if talk and math.sin(t * 9) > -.2:                                # la boca se abre al hablar
@@ -939,7 +935,7 @@ def pup_sil(s, x, y, flap, sc, name, t, lit=True, rim=None):
             a = k * TAU / 10
             pygame.draw.circle(s, lerp(col, (255, 255, 255), .32), (int(x + math.cos(a) * 8 * sc), int(y + 5 * sc + math.sin(a) * 9 * sc)), max(1, int(2.6 * sc)))
     if lk.get('tuft'):                                                    # mechón esponjado en la pancita
-        tuft_belly(s, x, y + 6 * sc, max(.7, sc * 1.2), PUP_MARKS[name][1], t)
+        tuft_belly(s, x, y + (1 if name == 'Chispa' else 6) * sc, max(.7, sc * 1.2), PUP_MARKS[name][1], t)   # Chispa: en el pecho
     hx, hy = x, y - 15 * sc
     hr = max(3, int(8.5 * sc))
     for sd in (-1, 1):                                                    # orejas grandes, rosadas por dentro
@@ -1462,6 +1458,23 @@ class Departure(Shot):
         canela_sil(s, x - 170, y + 40 + 8 * math.sin(t * .9), t, 1.55, (255, 190, 130))       # planea, aletea poco
 
 
+class LeftBehind(Departure):
+    """Se acabó la noche: la colonia parte hacia su nuevo refugio SIN Mullo («con ella o sin ella»).
+    Misma vista que la imagen final, pero la boca de la cueva queda vacía y la Abuela Canela es la última en irse."""
+
+    def draw(self, s, t, dur):
+        L = self.layers
+        s.blit(L['sky'], (0, 0))
+        sy = 560 - min(t, 40) * 4                                          # aquí el sol ya empieza a salir
+        s.blit(L['sun'], (640 - 260, sy - 260), special_flags=pygame.BLEND_RGB_ADD)
+        s.blit(L['far'], (0, 0))
+        s.blit(L['mid'], (0, 0))
+        colony(s, t + 6, 200, 400, 60, (80, 40), 6, (30, 14, 18), .3, stream=1.0, dirx=1)
+        s.blit(L['cliff'], (0, 0))
+        p = min(1.0, t * .09)                                              # la Abuela sale al último y se aleja
+        canela_sil(s, 230 + p * 640, 380 - p * 230 + 8 * math.sin(t * .9), t, 1.55 - .6 * p, (255, 190, 130))
+
+
 class Gallery(Shot):
     """Galerías de los Hongos: hongos luminosos, rastros en el suelo y una cortina de telarañas que el grito rompe."""
     rings = 'screech'
@@ -1603,7 +1616,7 @@ class Escape(Mine):
 SHOTS = {'gallery': Gallery, 'whisper': Whisper, 'low_point': LowPoint, 'mine_far': MineFar, 'escape': Escape,
          'dusk': Dusk, 'leaving': Leaving, 'empty_nest': EmptyNest, 'debate': Debate, 'nest_three': NestThree,
          'descent': Descent, 'lake': Lake, 'echo_room': EchoRoom, 'mine_gate': MineGate, 'mine': Mine,
-         'dawn_nest': DawnNest, 'true_voice': TrueVoice, 'departure': Departure,
+         'dawn_nest': DawnNest, 'true_voice': TrueVoice, 'departure': Departure, 'left_behind': LeftBehind,
          'canela': CanelaShot, 'goodbye': Goodbye, 'advice': Advice, 'tale': Tale, 'return_nest': ReturnNest,
          'search': Search}
 
