@@ -141,6 +141,10 @@ SHOT_SFX = {'canela': ('canela', .8), 'tale': ('canela', .7), 'advice': ('canela
 WHISPER_MESSAGE = ('Un susurro',
                    ['Desde abajo sube un susurro con una voz parecida a la de Mullo.',
                     '«¿Esa voz?...». Le suena familiar y no sabe por qué.'])
+# Primera vez que Mullo vuela sobre el Lago Negro (propuesta 3.5: «el aire húmedo frena a Mullo»).
+HUMID_MESSAGE = ('Aire húmedo',
+                 ['Sobre el Lago Negro el aire pesa y se le pega a las alas.',
+                  'Mientras cruza el agua, Mullo vuela más despacio.'])
 # La Sala del Eco (punto medio del Acto II): al encontrar a Eco, con su animación.
 ECHO_MESSAGE = ('La Sala del Eco',
                 ['Mullo por fin escucha el eco de la cueva: el aire que la recorre',
@@ -151,6 +155,10 @@ XOLTHAR_MESSAGE = ('Xolthar',
                    ['Las gemelas Bolillo y Pozolito tiemblan sobre dos vagonetas, junto a',
                     'una forma enroscada enorme. Es Xolthar, el Gran Ciempiés del cuento',
                     'de la Abuela. «No despierten a lo que duerme al fondo».'])
+# Acto III: Mullo gritó tres veces junto a Xolthar dormido y lo despertó (fuera del momento de las gemelas).
+NOISE_WAKE_MESSAGE = ('¡Lo despertaste!',
+                      ['«No despierten a lo que duerme al fondo», había dicho la Abuela Canela.',
+                       'Xolthar está furioso: ya no dejará de seguir a Mullo.'])
 # Acto III: cuando Xolthar despierta, Mullo recuerda el consejo de la Abuela (3.ª mejora).
 AIR_MESSAGE = ('Sigue el aire',
                ['La mina retumba y el Gran Ciempiés despierta. Mullo recuerda el consejo:',

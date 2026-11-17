@@ -66,11 +66,16 @@ class InstructionsScene(Scene):
         self.panel = pygame.Surface((W - 80, H - 40), pygame.SRCALPHA)       # se crea una sola vez
         pygame.draw.rect(self.panel, (6, 4, 16, 205), self.panel.get_rect(), border_radius=18)
         pygame.draw.rect(self.panel, (110, 80, 170, 220), self.panel.get_rect(), 2, border_radius=18)
+        from scenes.results import Buttons
+        self.back = Buttons(['Volver'], H - 46, w=150, h=40, cx=142)    # mismo botón que el resto del juego
 
     def enter(self):
         self.game.sounds.menu_music()                                   # el Can-Can sigue, más bajito (3%)
 
     def handle(self, ev):
+        if ev.type == pygame.MOUSEMOTION:
+            self.back.handle(ev)
+            return
         if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE):
             self.game.sounds.play('menu_select')
             self.game.goto('title')
@@ -80,12 +85,14 @@ class InstructionsScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        self.dt = dt
         self.game.backdrop.update(dt)
 
     def draw(self, screen):
         self.game.backdrop.draw(screen)
         screen.blit(self.panel, (40, 20))
         ui.text(screen, ui.F_L, 'INSTRUCCIONES', W // 2, 62, C_PURPLE, True)
+        self.back.draw(screen, getattr(self, 'dt', 1 / 60))
         y = 100
         for kind, head, keys, desc in ENTRIES:
             icon(screen, kind, 100, y + 22, self.t)

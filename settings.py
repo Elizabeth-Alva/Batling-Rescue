@@ -5,6 +5,12 @@ import sys
 IS_WEB = sys.platform == "emscripten"     # ejecutándose en el navegador (pygbag)
 
 W, H = 960, 640
+# Zoom del mundo: en el navegador (y la app de Android) la cueva se dibuja a 720x480 y se amplía a la pantalla.
+# Así todo se ve más grande en el celular y cada cuadro mueve 44 % menos píxeles (va más fluido). Menús, HUD y
+# cinemáticas siguen a resolución completa. En la computadora no hay zoom. (BATLING_ZOOM permite probarlo.)
+import os as _os
+ZOOM = float(_os.environ.get('BATLING_ZOOM', 4 / 3 if IS_WEB else 1.0))
+VIEW_W, VIEW_H = int(W / ZOOM) // 2 * 2, int(H / ZOOM) // 2 * 2     # lo que se ve del mundo, en píxeles del mundo
 FPS = 60
 TAU = math.tau
 TITLE = "BATling Rescue"

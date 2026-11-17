@@ -1,4 +1,4 @@
-"""Portada con menú: Jugar / Instrucciones / Récords. El fondo son las cuevas reales del juego (title_cave.py)."""
+"""Portada con menú: Jugar / Instrucciones / Récords / Salir. El fondo son las cuevas reales del juego (title_cave.py)."""
 import math
 
 import pygame
@@ -130,10 +130,15 @@ def title_cave(game):
 class TitleScene(Scene):
     def __init__(self, game):
         super().__init__(game)
-        self.main = ['Jugar', 'Instrucciones', 'Récords']               # (sin «Salir»: Esc o cerrar la ventana)
+        # «Salir» no aparece en el navegador (ahí no se puede cerrar la pestaña)
+        self.actions = ['play', 'instructions', 'records'] + ([] if IS_WEB else ['quit'])
+        labels = {'play': 'Jugar', 'instructions': 'Instrucciones', 'records': 'Récords', 'quit': 'Salir'}
+        styles = {'quit': 'danger'}
+        self.main = [labels[a] for a in self.actions]
         n = len(self.main)
-        self.menu = ui.Menu(self.main, W // 2, 566, gap=236 if n <= 3 else 226, w=220 if n <= 3 else 208, h=44,
-                            horizontal=True)
+        w = 196 if n >= 4 else 220
+        self.menu = ui.Menu(self.main, W // 2, 562, gap=w + 18, w=w, h=46, horizontal=True,
+                            styles=[styles.get(a, 'primary') for a in self.actions])
         self.t = 0.0
         self.cover = title_cave(game)
         self.dt = 1 / 60
@@ -155,12 +160,17 @@ class TitleScene(Scene):
                 self.game.running = False
             return
         choice = self.menu.handle(ev, self.game.sounds)
-        if choice == 0:
+        if choice is None:
+            return
+        act = self.actions[choice]
+        if act == 'play':
             self.game.start_story()
-        elif choice == 1:
+        elif act == 'instructions':
             self.game.goto('instructions')
-        elif choice == 2:
+        elif act == 'records':
             self.game.goto('records')
+        elif act == 'quit':
+            self.game.quit()
 
     def update(self, dt):
         self.t += dt

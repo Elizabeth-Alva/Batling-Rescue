@@ -16,6 +16,8 @@ import scores
 import ui
 from settings import W, H, GOAL, C_GOLD, C_PUP
 
+LEVEL_NAMES = {1: 'Galerías', 2: 'Lago Negro', 3: 'Mina Vieja'}
+
 
 def run_time(g):
     """Tiempo de la partida: el total de la historia (si empezó desde el prólogo) o, si no, el del nivel."""
@@ -76,7 +78,7 @@ def _veil(kind):
         for y in range(32):
             for x in range(48):
                 d = math.hypot((x - 23.5) / 24, (y - 15.5) / 16)
-                small.set_at((x, y), (*base, int(min(252, 218 + 40 * d * d))))
+                small.set_at((x, y), (*base, int(min(252, 238 + 20 * d * d))))
         _CACHE[key] = pygame.transform.smoothscale(small, (W, H))
     return _CACHE[key]
 
@@ -140,8 +142,9 @@ class Particles:
 class Buttons:
     """Fila de botones centrada. handle() devuelve el índice elegido o None."""
 
-    def __init__(self, labels, cy, w=210, h=50, gap=24, cx=W // 2):
+    def __init__(self, labels, cy, w=210, h=50, gap=24, cx=W // 2, styles=None):
         self.labels, self.sel, self.t = labels, 0, 0.0
+        self.styles = styles
         total = len(labels) * w + (len(labels) - 1) * gap
         x0 = cx - total // 2
         self.rects = [pygame.Rect(x0 + i * (w + gap), cy - h // 2, w, h) for i in range(len(labels))]
@@ -174,21 +177,12 @@ class Buttons:
                 return i
         return None
 
-    def draw(self, s, dt, accent=(200, 160, 255), fill=(110, 70, 190)):
+    def draw(self, s, dt, accent=None, fill=None, styles=None):
+        """Mismo estilo de botón que el resto del juego (ui.draw_button)."""
         self.t += dt
-        pulse = .5 + .5 * math.sin(self.t * 5)
+        styles = styles or getattr(self, 'styles', None) or ['primary'] * len(self.labels)
         for i, (label, r) in enumerate(zip(self.labels, self.rects)):
-            on = i == self.sel
-            box = pygame.Surface(r.size, pygame.SRCALPHA)
-            if on:
-                pygame.draw.rect(box, (*fill, 170 + int(50 * pulse)), box.get_rect(), border_radius=14)
-                pygame.draw.rect(box, (*accent, 255), box.get_rect(), 2, border_radius=14)
-            else:
-                pygame.draw.rect(box, (20, 14, 34, 190), box.get_rect(), border_radius=14)
-                pygame.draw.rect(box, (90, 74, 120, 220), box.get_rect(), 1, border_radius=14)
-            s.blit(box, r.move(0, -2 if on else 0))
-            ui.text(s, ui.F_S, label, r.centerx, r.centery - (2 if on else 0),
-                    (255, 255, 255) if on else (175, 160, 200), True)
+            ui.draw_button(s, r, label, i == self.sel, self.t, styles[i])
 
 
 # ---------------------------------------------------------------- tabla de récords
@@ -341,8 +335,9 @@ def _draw_left_behind(s, g):
 
 
 def draw_game_over(s, g, dt):
-    """Pantalla de derrota: GAME OVER, motivo, estadísticas del intento y botones.
-    Si se acabó el tiempo, antes se ve cómo la colonia se va sin Mullo."""
+    """Pantalla de derrota, solo con lo esencial: GAME OVER, por qué, Mullo triste, cuántas crías salvó en el
+    nivel, el tiempo y dos botones (Reintentar · Menú principal). Si se acabó el tiempo, antes se ve cómo la
+    colonia se va sin Mullo."""
     if dawn_scene_on(g):
         return _draw_left_behind(s, g)
     t = g.over_t - (DAWN_T if g.lose_reason == 'dawn' else 0)
@@ -352,99 +347,95 @@ def draw_game_over(s, g, dt):
     fx.draw(s)
     cx = W // 2
     k = ease_out_back(t / .7)
-    glow_title(s, ui.F_XL, 'GAME OVER', cx, int(-60 + 190 * k), (255, 225, 225), (230, 30, 50), t, .6 + .4 * k)
+    glow_title(s, ui.F_XL, 'GAME OVER', cx, int(-60 + 180 * k), (255, 225, 225), (230, 30, 50), t, .6 + .4 * k)
     if t > .4:
-        reason = 'SE ACABÓ LA NOCHE · LA COLONIA SE FUE' if g.lose_reason == 'dawn' else 'TE QUEDASTE SIN VIDAS'
-        pill(s, reason, cx, 208, (255, 200, 200), (60, 10, 20))
-    # Mullo, triste y envuelta en sus alas
-    bob = math.sin(t * 2) * 4
-    ui.draw_mullo(s, cx, 268 + bob, 1.0 + .1 * math.sin(t * 2), 1.8, fold=.95, mood='closed')
+        reason = 'SE ACABÓ LA NOCHE' if g.lose_reason == 'dawn' else 'TE QUEDASTE SIN VIDAS'
+        pill(s, reason, cx, 196, (255, 200, 200), (60, 10, 20))
+    bob = math.sin(t * 2) * 4                                   # Mullo, triste y envuelta en sus alas
+    ui.draw_mullo(s, cx, 258 + bob, 1.0 + .1 * math.sin(t * 2), 1.7, fold=.95, mood='closed')
     for i in range(2):                                          # lagrimitas
-        p = (t * .8 + i * .5) % 1
-        pygame.draw.circle(s, (140, 190, 255), (int(cx + (-9 if i else 9)), int(268 + bob + 4 + p * 26)), 2)
-    # estadísticas del intento
-    cw, ch = 600, 96
-    x0, y0 = cx - cw // 2, 322
-    card(s, (x0, y0, cw, ch), (16, 4, 10, 220), (200, 80, 100), 2, 16)
-    best = getattr(g, 'best_time', None)
-    cols = [('TIEMPO TOTAL' if is_full_run(g) else 'TIEMPO', scores.fmt(run_time(g)), (255, 230, 230)),
-            ('CRÍAS DEL NIVEL', f'{g.rescued_here}/{g.goal_here}', C_PUP),
-            ('RÉCORD · 3 NIVELES', scores.fmt(best) if best is not None else '—', C_GOLD)]
-    for i, (lab, val, col) in enumerate(cols):
-        ccx = x0 + cw * (i + .5) / 3
-        ui.text(s, ui.F_XS, lab, ccx, y0 + 26, (210, 160, 170), True)
-        ui.text(s, ui.F_M, val, ccx, y0 + 62, col, True)
-        if i:
-            pygame.draw.line(s, (110, 50, 70), (x0 + cw * i / 3, y0 + 16), (x0 + cw * i / 3, y0 + ch - 16), 1)
-    sub = f'{g.cfg["act"]} · {g.cfg["name"]}'
-    if is_full_run(g):
-        sub += '    ·    el reloj sigue contando al reintentar'
-    ui.text(s, ui.F_XS, sub, cx, y0 + ch + 22, (200, 170, 190), True)
+        q = (t * .8 + i * .5) % 1
+        pygame.draw.circle(s, (140, 190, 255), (int(cx + (-9 if i else 9)), int(258 + bob + 4 + q * 24)), 2)
     if t > .6:
-        g.over_buttons.draw(s, dt, (255, 150, 160), (150, 40, 60))
+        msg = 'La colonia se fue antes del amanecer.' if g.lose_reason == 'dawn' else 'Sus crías la siguen esperando.'
+        ui.text(s, ui.F_S, msg, cx, 316, (235, 200, 210), True)
+    cw, ch = 440, 92                                            # lo esencial del intento
+    x0, y0 = cx - cw // 2, 344
+    card(s, (x0, y0, cw, ch), (16, 4, 10, 225), (200, 80, 100), 2, 16)
+    cols = [('CRÍAS DEL NIVEL', f'{g.rescued_here}/{g.goal_here}', C_PUP),
+            ('TIEMPO TOTAL' if is_full_run(g) else 'TIEMPO', scores.fmt(run_time(g)), (255, 230, 230))]
+    for i, (lab, val, col) in enumerate(cols):
+        ccx = x0 + cw * (i + .5) / 2
+        ui.text(s, ui.F_XS, lab, ccx, y0 + 24, (210, 160, 170), True)
+        ui.text(s, ui.F_M, val, ccx, y0 + 60, col, True)
+    pygame.draw.line(s, (110, 50, 70), (x0 + cw // 2, y0 + 16), (x0 + cw // 2, y0 + ch - 16), 1)
+    ui.text(s, ui.F_XS, f'{g.cfg["act"]} · {g.cfg["name"]}', cx, y0 + ch + 20, (190, 160, 180), True)
+    if t > .6:
+        g.over_buttons.draw(s, dt)
         touch = getattr(getattr(g, 'game', None), 'touch', None)
         if not (touch is not None and touch.active):
-            hint(s, '← → elegir    ·    Enter aceptar    ·    R reintentar    ·    Esc menú principal')
+            hint(s, 'R: reintentar    ·    Esc: menú principal')
 
 
 def draw_level_clear(s, g, dt):
-    """Pantalla de nivel superado: título con rayos, tiempo del nivel, tiempo total y avance hacia el récord."""
+    """Pantalla de nivel superado, solo con lo esencial: qué nivel fue, las crías a salvo, el tiempo, el avance de
+    la historia (3 niveles) y dos botones (Continuar · Menú principal)."""
     t = g.clear_t
     s.blit(_veil('clear'), (0, 0))
     rays = pygame.transform.rotate(_rays(), (t * 12) % 360)
-    s.blit(rays, rays.get_rect(center=(W // 2, 120)))
+    rays.set_alpha(150)
+    s.blit(rays, rays.get_rect(center=(W // 2, 118)))
     fx = _fx(g, 'clear')
     fx.update(dt)
     fx.draw(s)
     cx, cfg = W // 2, g.cfg
-    ui.text(s, ui.F_S, f'{cfg["act"].upper()} · {cfg["name"].upper()}', cx, 56, C_GOLD, True)
+    ui.text(s, ui.F_S, f'{cfg["act"].upper()} · {cfg["name"].upper()}', cx, 50, C_GOLD, True)
     k = ease_out_back(t / .6)
-    glow_title(s, ui.F_L, '¡NIVEL SUPERADO!', cx, 118, (255, 245, 220), (255, 170, 60), t, max(.05, k))
-    for i in range(g.goal_here):                                # crías de este nivel, a salvo
-        ui.pup_icon(s, cx - (g.goal_here - 1) * 13 + i * 26, 172, 'safe', t + i)
-    ui.draw_mullo(s, cx - 160, 166 + math.sin(t * 4) * 5, t * 10, .8, mood='happy')
-    ui.draw_mullo(s, cx + 160, 166 + math.sin(t * 4 + 1) * 5, t * 10 + 1, .8, mood='happy')
-    # tiempos
-    full = is_full_run(g)
-    best = getattr(g, 'best_time', None)
-    cw, ch = 680, 124
-    x0, y0 = cx - cw // 2, 212
-    card(s, (x0, y0, cw, ch), (14, 8, 30, 220), (255, 205, 120), 2, 18)
+    glow_title(s, ui.F_L, '¡NIVEL SUPERADO!', cx, 108, (255, 245, 220), (255, 170, 60), t, max(.05, k))
+    n = g.goal_here                                             # crías de este nivel, a salvo (Mullo feliz a los lados)
+    for i in range(n):
+        ui.pup_icon(s, cx - (n - 1) * 15 + i * 30, 170, 'safe', t + i)
+    side = (n - 1) * 15 + 70
+    ui.draw_mullo(s, cx - side, 168 + math.sin(t * 4) * 4, t * 10, .7, mood='happy')
+    ui.draw_mullo(s, cx + side, 168 + math.sin(t * 4 + 1) * 4, t * 10 + 1, .7, mood='happy')
+    ui.text(s, ui.F_XS, f'{g.rescued_here} de {n} crías a salvo', cx, 198, C_PUP, True)
+    full = is_full_run(g)                                       # tiempos
     cols = [('TIEMPO DEL NIVEL', scores.fmt(g.t), (240, 232, 255))]
     if full:
         cols.append(('TIEMPO TOTAL', scores.fmt(run_time(g) * min(1.0, t / .9)), (255, 240, 210)))
-    cols.append(('RÉCORD · 3 NIVELES', scores.fmt(best) if best is not None else '—', C_GOLD))
-    n = len(cols)
+    nc = len(cols)
+    cw, ch = 220 * nc + 60, 104
+    x0, y0 = cx - cw // 2, 226
+    card(s, (x0, y0, cw, ch), (14, 8, 30, 225), (255, 205, 120), 2, 16)
     for i, (lab, val, col) in enumerate(cols):
-        ccx = x0 + cw * (i + .5) / n
-        ui.text(s, ui.F_XS, lab, ccx, y0 + 30, (230, 200, 150), True)
+        ccx = x0 + cw * (i + .5) / nc
+        ui.text(s, ui.F_XS, lab, ccx, y0 + 28, (230, 200, 150), True)
         if lab == 'TIEMPO TOTAL':
-            glow_title(s, ui.F_L, val, ccx, y0 + 76, col, (255, 160, 60), t, .8)
+            glow_title(s, ui.F_L, val, ccx, y0 + 68, col, (255, 160, 60), t, .75)
         else:
-            ui.text(s, ui.F_M, val, ccx, y0 + 76, col, True)
+            ui.text(s, ui.F_M, val, ccx, y0 + 68, col, True)
         if i:
-            pygame.draw.line(s, (120, 95, 70), (x0 + cw * i / n, y0 + 18), (x0 + cw * i / n, y0 + ch - 18), 1)
-    # avance: los 3 niveles
-    py = 392
+            lx = x0 + cw * i / nc
+            pygame.draw.line(s, (120, 95, 70), (lx, y0 + 16), (lx, y0 + ch - 16), 1)
+    py = 384                                                    # avance de la historia: los 3 niveles
     for lv in (1, 2, 3):
-        x = cx + (lv - 2) * 150
+        x = cx + (lv - 2) * 140
         done = lv <= g.level
         if lv < 3:
-            pygame.draw.line(s, C_GOLD if lv < g.level else (80, 70, 110), (x + 22, py), (x + 128, py), 3)
-        pygame.draw.circle(s, C_GOLD if done else (30, 24, 50), (x, py), 20)
-        pygame.draw.circle(s, (255, 240, 200) if done else (110, 95, 150), (x, py), 20, 2)
+            pygame.draw.line(s, C_GOLD if lv < g.level else (80, 70, 110), (x + 20, py), (x + 120, py), 3)
+        pygame.draw.circle(s, C_GOLD if done else (30, 24, 50), (x, py), 18)
+        pygame.draw.circle(s, (255, 240, 200) if done else (110, 95, 150), (x, py), 18, 2)
         ui.text(s, ui.F_S, str(lv), x, py, (40, 20, 0) if done else (170, 155, 200), True)
-        ui.text(s, ui.F_XS, f'Nivel {lv}', x, py + 34, (240, 225, 200) if done else (150, 140, 175), True)
+        ui.text(s, ui.F_XS, LEVEL_NAMES[lv], x, py + 32, (240, 225, 200) if done else (150, 140, 175), True)
     left = 3 - g.level
-    if not full:
-        msg, col = 'El récord solo cuenta jugando los 3 niveles desde «Jugar».', (200, 185, 225)
-    elif left:
-        msg, col = f'Te falta{"n" if left > 1 else ""} {left} nivel{"es" if left > 1 else ""} para tu tiempo final. ¡El reloj sigue!', C_PUP
-    else:
-        msg, col = '¡Completaste los 3 niveles! Tu tiempo final se guarda al terminar la historia.', C_PUP
-    ui.text(s, ui.F_S, msg, cx, 468, col, True)
+    if full and left:
+        plural = 'n' if left > 1 else ''
+        ui.text(s, ui.F_XS, f'Falta{plural} {left} nivel{"es" if left > 1 else ""} · el reloj sigue contando',
+                cx, 446, (210, 195, 235), True)
+    elif not full:
+        ui.text(s, ui.F_XS, 'Partida de prueba: no cuenta para los récords', cx, 446, (170, 160, 200), True)
     if t > .8:
         g.clear_buttons.draw(s, dt)
     touch = getattr(getattr(g, 'game', None), 'touch', None)
     if not (touch is not None and touch.active):
-        hint(s, 'Enter: continuar la historia    ·    Esc: menú principal', H - 14)
+        hint(s, 'Enter: continuar    ·    Esc: menú principal', H - 16)

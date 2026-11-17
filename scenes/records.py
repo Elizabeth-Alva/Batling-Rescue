@@ -15,12 +15,17 @@ class RecordsScene(Scene):
         self.panel = pygame.Surface((W - 80, H - 40), pygame.SRCALPHA)
         pygame.draw.rect(self.panel, (6, 4, 16, 205), self.panel.get_rect(), border_radius=18)
         pygame.draw.rect(self.panel, (110, 80, 170, 220), self.panel.get_rect(), 2, border_radius=18)
+        from scenes.results import Buttons
+        self.back = Buttons(['Volver'], H - 46, w=150, h=40, cx=142)    # mismo botón que el resto del juego
 
     def enter(self):
         self.game.sounds.stop(keep_song=True)
         self.game.sounds.menu_music()                                   # sigue el Can-Can del menú
 
     def handle(self, ev):
+        if ev.type == pygame.MOUSEMOTION:
+            self.back.handle(ev)
+            return
         if (ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE)) \
                 or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
             self.game.sounds.play('menu_select')
@@ -28,12 +33,14 @@ class RecordsScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        self.dt = dt
         self.game.backdrop.update(dt)
 
     def draw(self, screen):
         self.game.backdrop.draw(screen)
         screen.blit(self.panel, (40, 20))
         glow_title(screen, ui.F_L, 'RÉCORDS DE TIEMPO', W // 2, 66, (255, 236, 200), (255, 150, 60), self.t)
+        self.back.draw(screen, getattr(self, 'dt', 1 / 60))
         ui.text(screen, ui.F_XS, 'Tiempo por completar los 3 niveles. Menos tiempo = mejor lugar.',
                 W // 2, 108, (200, 185, 230), True)
         ui.text(screen, ui.F_XS, 'El reloj se detiene en pausa y en las cinemáticas; los reintentos sí cuentan.',

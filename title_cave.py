@@ -35,11 +35,11 @@ class TitleCave:
             random.setstate(state)
         for r in self.resting:
             r.arrive = 0.0
-        self.camera = Camera(*NEST)
+        self.camera = Camera(*NEST, vw=W, vh=H, zoom=1.0)   # la portada usa la pantalla completa (sin zoom)
         self.camera.x, self.camera.y = self._best_view()
         cam = self.camera
         cv.mark_circle(cam.x + W / 2, cam.y + H / 2, max(W, H), mem=True)     # la cueva se ve tenue, como ya recorrida
-        self.light = Lighting(cv.crystals, cv.fungi, LEVELS[level]['theme'], cv.algae)
+        self.light = Lighting(cv.crystals, cv.fungi, LEVELS[level]['theme'], cv.algae, size=(W, H))
         self.view = cv.bg.subsurface((int(cam.x), int(cam.y), W, H)).copy()   # roca y hongos del juego (fijo)
         cv.bg = None                                          # el mapa completo ya no hace falta (ahorra memoria)
         self.path = self._flight_path()

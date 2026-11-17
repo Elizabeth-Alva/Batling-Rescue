@@ -16,10 +16,7 @@ def _touch(g):
 
 
 def _menu_btn(screen, g):
-    r = g.MENU_BTN
-    pygame.draw.rect(screen, (40, 26, 70), r, border_radius=14)
-    pygame.draw.rect(screen, (200, 160, 255), r, 2, border_radius=14)
-    ui.text(screen, ui.F_S, 'Menú principal', r.centerx, r.centery, (240, 232, 255), True)
+    ui.draw_button(screen, g.MENU_BTN, 'Menú principal', True, getattr(g, 't', 0.0))
 
 
 def draw_overlay(screen, g):
@@ -43,8 +40,8 @@ def draw_overlay(screen, g):
             times = f'Tiempo total: {scores.fmt(prog.get("play_time", 0))}     ·     ' + times
         ui.text(screen, ui.F_XS, times + '   (el reloj está detenido)', cx, H // 2 + 12, (255, 215, 150), True)
         if _touch(g):
-            ui.text(screen, ui.F_S, 'Toca la pantalla para continuar', cx, H // 2 + 50, (190, 180, 210), True)
-            _menu_btn(screen, g)
+            ui.text(screen, ui.F_S, 'Toca fuera de los botones para continuar', cx, H // 2 + 50, (190, 180, 210), True)
         else:
-            ui.text(screen, ui.F_S, 'P / Enter: continuar     M: mapa     B: brillo     Esc: menú principal',
+            ui.text(screen, ui.F_XS, 'P: continuar     M: mapa     B: brillo     ← → y Enter: elegir botón',
                     cx, H // 2 + 50, (190, 180, 210), True)
+        g.pause_buttons.draw(screen, dt)

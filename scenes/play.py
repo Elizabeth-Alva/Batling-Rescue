@@ -1,4 +1,5 @@
 """Escena de juego: un nivel (acto) de la historia. Orquesta cueva, Mullo, crías, enemigos, luces, HUD y momentos de historia."""
+import gc
 import math
 import random
 
@@ -7,7 +8,8 @@ import pygame
 import difficulty
 import scores
 import ui
-from ambient import ActAmbience
+from ambient import (ActAmbience, CoalBits, CrystalGlints, FungusPuffs, MoltSway, MulloFx, ShellGlints, WaterWake,
+                     BurrowFx, LakeWisps, WebSway, WetWings)
 from camera import Camera
 from enemies import Enemy, Boss, pick_kind
 from fauna import Defeat, DropSpider, Resting, spawn_salamanders
@@ -20,10 +22,10 @@ from pups import Pup
 from scenes import Scene
 from scenes.overlays import draw_overlay
 from scenes.results import Buttons, DAWN_T, dawn_scene_on
-from settings import (W, H, NEST, NEST_R, SAFE_R, TILE, BAT_HP, SCREECH_CD, SCREECH_CD_DECIDED, SCREECH_R,
+from settings import (IS_WEB, W, H, VIEW_W, VIEW_H, ZOOM, NEST, NEST_R, SAFE_R, TILE, BAT_HP, SCREECH_CD, SCREECH_CD_DECIDED, SCREECH_R,
                       REVEAL_T, REVEAL_T_READER, ECHO_FLASH_T, SHIELD_CD, DASH_CD, DASH_CD_AIR, BRIGHTNESS_LEVELS,
                       IMPACT_NOISE_MIN, IMPACT_NOISE_MAX, C_IMPACT, C_GREEN, C_PUP, C_GOLD)
-from story import LEVELS, PUPS, ECHO_MESSAGE, WHISPER_MESSAGE, XOLTHAR_MESSAGE, AIR_MESSAGE, pup_count, rescued_before
+from story import DEPARTURE_MIN, HUMID_MESSAGE, NOISE_WAKE_MESSAGE, LEVELS, PUPS, ECHO_MESSAGE, WHISPER_MESSAGE, XOLTHAR_MESSAGE, AIR_MESSAGE, pup_count, rescued_before
 
 
 EYE_POS = {'hunter': (2.6, 3.2), 'boss': (12, 11.3), 'spider': (7.0, 2.2), 'beetle': (17.0, 3.7)}
@@ -38,13 +40,6 @@ def _web_tile():
         pygame.draw.line(s, c, (16, 16), (16 + math.cos(r) * 22, 16 + math.sin(r) * 22), 1)
     for rr in (5, 10, 15):
         pygame.draw.circle(s, (200, 210, 210, 150), (16, 16), rr, 1)
-    return s
-
-
-def _soft_blob(r, col, a):
-    s = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
-    for i in range(r, 0, -3):
-        pygame.draw.circle(s, (*col, int(a * (1 - i / r) ** 1.5)), (r, r), i)
     return s
 
 
@@ -110,7 +105,8 @@ class PlayScene(Scene):
         self.cave = CaveMap(level)
         cv = self.cave
         self.light = Lighting(cv.crystals, cv.fungi, self.cfg['theme'], cv.algae)
-        self.canvas = pygame.Surface((W, H))
+        self.canvas = pygame.Surface((VIEW_W, VIEW_H))           # el mundo (en el navegador, más chico: se amplía)
+        self.zoomed = ZOOM != 1                          # con zoom, el mundo se amplía directo a la pantalla
         self.state = 'play'
         self.bat = Bat()
         self.camera = Camera(self.bat.x, self.bat.y)
@@ -146,7 +142,11 @@ class PlayScene(Scene):
         self.clear_t = 0.0
         self.over_t = 0.0                                     # segundos en la pantalla de GAME OVER
         self.over_buttons = None
-        self.clear_buttons = Buttons(['Continuar  »'], 540, w=240)   # pantalla de NIVEL SUPERADO
+        self.clear_buttons = Buttons(['Continuar  »', 'Menú principal'], 520, w=220)   # pantalla de NIVEL SUPERADO
+        self.pause_actions = ['resume', 'menu'] + ([] if IS_WEB else ['quit'])     # botones de la pausa
+        self.pause_buttons = Buttons([{'resume': 'Continuar', 'menu': 'Menú principal', 'quit': 'Salir del juego'}[a]
+                                      for a in self.pause_actions], H // 2 + 112, w=200,
+                                     styles=[{'quit': 'danger'}.get(a, 'primary') for a in self.pause_actions])
         self.best_time = scores.best()                        # récord de los 3 niveles (se ve en el HUD)
         self.ui_dt = 1 / 60
         self.pings = []                                       # chillidos cercanos fuera de pantalla [x, y, edad]
@@ -161,18 +161,28 @@ class PlayScene(Scene):
         cv.mark_circle(*NEST, TILE * 7)
         # ambientación del escenario
         self.air = []                                         # corriente de aire (mina)
-        self.mist = []                                        # niebla baja (lago)
-        if self.cfg['theme'] == 'lake':
-            water = [(i % cv.w, i // cv.w) for i in range(cv.w * cv.h) if cv.water[i]]
-            blobs = [_soft_blob(r, (150, 160, 210), 34) for r in (90, 120, 150)]
-            for _ in range(min(26, len(water) // 12)):
-                tx, ty = random.choice(water)
-                self.mist.append([tx * TILE + 16, ty * TILE + 16, random.choice(blobs), random.uniform(-10, 10), random.uniform(0, 6)])
         rc = {'fungi': (40, 64, 170), 'lake': (110, 60, 170), 'mine': (210, 120, 50)}[self.cfg['theme']]
         self.rays = [_sky_rays(rc, 1), _sky_rays(rc, 2)]      # dos juegos de haces que se alternan suave
         self.sky_dust = []                                    # polvo que flota en la luz (no hay insectos: sequía)
         self.salamanders = spawn_salamanders(cv) if self.cfg['theme'] == 'lake' else []   # salamandras de cueva
         self.act_fx = ActAmbience(self.cfg['theme'], cv)      # esporas (I) / polvo y tierrita de las vigas (III)
+        # detalles que reaccionan a Mullo (solo ambiente: no cambian la historia ni las reglas)
+        self.puffs = FungusPuffs(cv.fungi, self.cfg['theme'])          # hongos que sueltan esporas al rozarlos
+        self.webs = WebSway(getattr(cv, 'cobweb_info', []))            # telarañas que se mecen (y su dueña se asoma)
+        self.glints = CrystalGlints(cv.crystals)                       # cristales que destellan con su luz
+        self.shells = ShellGlints()                                    # caparazón metálico de los escarabajos
+        self.mfx = MulloFx()                                           # respira agitada / se sacude el polvo
+        self.coal = CoalBits()                                         # carbón que salta de las vagonetas
+        self.molt_fx = MoltSway(cv)                                    # la piel de Xolthar se mece con el aire
+        self.stars = [(random.random(), random.uniform(-.55, .55), random.uniform(0, 6.3), random.choice((1, 1, 2)))
+                      for _ in range(6)]                               # estrellas que se ven por la grieta del techo
+        self._was_dash = self._was_chased = False
+        self.wind_vol, self.wind_t = 0.0, 0.0                          # viento que silba en los pasillos angostos
+        self.wake = WaterWake()                                        # estela de ondas y reflejo sobre el agua
+        self.wet = WetWings()                                          # el aire húmedo del lago (alas mojadas, vaho)
+        self.wisps = LakeWisps(cv) if self.cfg['theme'] == 'lake' else None   # jirones de niebla sobre el agua
+        self.burrow_fx = BurrowFx()                                    # Xolthar rompe el piso
+        self.dip_t = -1.0                                              # las luces bajan y suben (Xolthar la vio)
         self.defeated = []                                    # enemigos vencidos (animación amable)
         sc = cv.secret                                        # sala secreta: escondite y un corazón
         self.secret_heart = sc['center'] if sc else None
@@ -199,6 +209,9 @@ class PlayScene(Scene):
             self.enemies.append(self.boss)
 
     def enter(self):
+        gc.unfreeze()                                         # suelta lo del nivel anterior,
+        gc.collect()                                          # limpia la basura de la carga y "congela" lo que ya
+        gc.freeze()                                           # existe: el recolector no lo revisa a medio juego (sin tirones)
         self.sounds.stop()
         self.sounds.ambient(.55, 'amb_' + self.cfg['theme'])          # ambiente sonoro de cada escenario
 
@@ -314,7 +327,7 @@ class PlayScene(Scene):
         for p in self.pups:
             p.revealed = self.reveal_dur
         for e in self.enemies:
-            if math.dist((e.x, e.y), (b.x, b.y)) < SCREECH_R + e.rad:
+            if math.dist((e.x, e.y), (b.x, b.y)) < SCREECH_R + e.rad and not getattr(e, 'underground', False):
                 e.hit_by_screech(b.x, b.y)
                 if e.hp <= 0:
                     self.sounds.play('die', (e.x, e.y))
@@ -342,7 +355,7 @@ class PlayScene(Scene):
     def lose(self, reason):
         self.state, self.lose_reason = 'over', reason
         self.over_t = 0.0
-        self.over_buttons = Buttons(['Reintentar', 'Menú principal'], 498)
+        self.over_buttons = Buttons(['Reintentar', 'Menú principal'], 512, styles=['danger', 'primary'])
         self.sounds.stop()
         self.sounds.play('lose')
         if hasattr(self.game, 'progress'):
@@ -357,8 +370,23 @@ class PlayScene(Scene):
     def on_noise(self, e):
         self.rings.append([e.x, e.y, 0, e.radius, e.color])
         bo = self.boss                                        # «No despierten a lo que duerme al fondo»: se remueve en sueños
-        if (bo and bo.state == 'sleep' and not self.wake_done and e.source != 'pup' and bo.stir <= .3
-                and math.dist((e.x, e.y), (bo.x, bo.y)) < e.radius + self.STIR_R):
+        near_boss = bo and bo.state == 'sleep' and not self.wake_done and \
+            math.dist((e.x, e.y), (bo.x, bo.y)) < e.radius + self.STIR_R
+        if near_boss and e.source == 'screech':               # gritos cerca: al tercero despierta furioso
+            bo.noise_hits += 1
+            if bo.noise_hits >= self.NOISE_WAKE:
+                self._wake_by_noise()
+            else:
+                k = bo.noise_hits / self.NOISE_WAKE           # cada grito lo inquieta más
+                bo.stir = 1.8 + 1.4 * k
+                self.sounds.play('growl', (bo.x, bo.y), .9 + .1 * k)
+                self.sounds.play('quake', (bo.x, bo.y), .35 + .5 * k)
+                self.shake = max(self.shake, .14 + .2 * k)
+                for _ in range(8 + int(14 * k)):              # cae polvito alrededor de su guarida
+                    self.sparkles.append([bo.x + random.uniform(-160, 160), bo.y + random.uniform(-120, 100), 0, 'rock', 0.0])
+                if bo.noise_hits == self.NOISE_WAKE - 1:     # último aviso: abre los ojos un instante y la cueva parpadea
+                    self.light_dip(.45)
+        elif (near_boss and e.source != 'pup' and bo.stir <= .3):
             bo.stir = 1.8
             self.sounds.play('growl', (bo.x, bo.y), .9)
             self.sounds.play('quake', (bo.x, bo.y), .35)
@@ -366,7 +394,7 @@ class PlayScene(Scene):
             for _ in range(8):                               # cae polvito alrededor de su guarida
                 self.sparkles.append([bo.x + random.uniform(-140, 140), bo.y + random.uniform(-110, 90), 0, 'rock', 0.0])
         if e.source == 'pup':                                 # chillido de cría cercana fuera de la pantalla: aviso en el borde
-            sx, sy = self.camera.apply(e.x, e.y)
+            sx, sy = self.camera.to_screen(e.x, e.y)
             off = not (-10 <= sx <= W + 10 and -10 <= sy <= H + 10)
             if off and math.dist((e.x, e.y), (self.bat.x, self.bat.y)) < self.PING_NEAR:
                 self.pings = [pg for pg in self.pings if math.dist(pg[:2], (e.x, e.y)) > 40]
@@ -374,7 +402,26 @@ class PlayScene(Scene):
         for en in self.enemies:
             en.hear(e.x, e.y, e.radius, self.diff.hear_mult)
 
+    NOISE_WAKE = 3                                        # gritos cerca de Xolthar dormido para despertarlo
+
+    def _wake_by_noise(self):
+        """Tercer grito junto a Xolthar dormido: despierta furioso y ya no deja de seguir a Mullo (aunque ella
+        llegue al nido; ahí no puede entrar, así que ronda afuera). Solo se calma si despierta por las gemelas."""
+        bo = self.boss
+        if not bo.wake():
+            return
+        bo.angry = True
+        self.sounds.play('quake', base=1.0)
+        self.sounds.play('roar', (bo.x, bo.y), 1.0)
+        self.shake = max(self.shake, .5)
+        self.light_dip()
+        self.boss_roar_t = 2.5
+        for k in range(3):
+            self.rings.append([bo.x, bo.y, -k * 70, 480, (255, 70, 50)])
+        self.banner = [NOISE_WAKE_MESSAGE[0], NOISE_WAKE_MESSAGE[1], 0.0]
+
     def on_impact(self, e):
+        self.mfx.impact()                                     # varios choques seguidos: se sacude el polvo
         k = min(1.0, e.speed / 350)
         self.sounds.play('impact', base=.4 + .6 * k)
         if e.speed > 200:
@@ -421,11 +468,13 @@ class PlayScene(Scene):
         elif self.state == 'pause':
             if name == 'map':
                 self.big_map = not self.big_map
-            elif self.MENU_BTN.collidepoint(x, y):
-                g.goto('title')
             else:
-                self.state = 'play'
-                self.big_map = False
+                i = self.pause_buttons.click((x, y), self.sounds)
+                if i is not None:
+                    self._pause_choice(i)
+                else:
+                    self.state = 'play'
+                    self.big_map = False
         elif self.state == 'over':
             if dawn_scene_on(self):
                 if self.over_t > .8:
@@ -464,8 +513,12 @@ class PlayScene(Scene):
                     self._over_choice(self.over_buttons.handle(ev, self.sounds))
         elif esc:
             g.goto('title')
-        elif self.clear_t > .8 and self.clear_buttons.handle(ev, self.sounds) is not None:
-            g.advance()
+        elif self.clear_t > .8:
+            i = self.clear_buttons.handle(ev, self.sounds)
+            if i == 0:
+                g.advance()
+            elif i == 1:
+                g.goto('title')
 
     def handle(self, ev):
         g, K = self.game, pygame
@@ -494,13 +547,31 @@ class PlayScene(Scene):
                     self.shield()
                 elif k == K.K_p:
                     self.state = 'pause'
-            elif self.state == 'pause' and k in (K.K_p, K.K_RETURN):
+            elif self.state == 'pause' and k == K.K_p:
                 self.state = 'play'
+            elif self.state == 'pause':
+                i = self.pause_buttons.handle(ev, self.sounds)   # ← → y Enter
+                if i is not None:
+                    self._pause_choice(i)
+        elif self.state == 'pause' and ev.type in (K.MOUSEMOTION, K.MOUSEBUTTONDOWN) and not self.touch_on():
+            i = self.pause_buttons.handle(ev, self.sounds)
+            if i is not None:
+                self._pause_choice(i)
         elif ev.type == K.MOUSEBUTTONDOWN and self.state == 'play' and not self.touch_on():
             if ev.button == 1:
                 self.screech()
             elif ev.button == 3:
                 self.shield()
+
+    def _pause_choice(self, i):
+        act = self.pause_actions[i]
+        if act == 'resume':
+            self.state = 'play'
+            self.big_map = False
+        elif act == 'menu':
+            self.game.goto('title')
+        elif act == 'quit':
+            self.game.quit()
 
     # ------------------------------------------------------------ lógica
     WAKE_T = 2.6
@@ -527,6 +598,7 @@ class PlayScene(Scene):
         if t > 1.0 and not getattr(self, '_roared', False):
             self._roared = True
             self.sounds.play('roar', base=1.0)
+            self.light_dip()                                  # te vio: las luces de la cueva bajan y suben
             for k2 in range(4):
                 self.rings.append([bo.x, bo.y, -k2 * 70, 520, (255, 70, 50)])
         if t > 1.9:                                           # Mullo recuerda el consejo: «sigue el aire»
@@ -638,14 +710,20 @@ class PlayScene(Scene):
             return
         if self.state != 'play':
             return
+        if getattr(self, 'hitstop', 0) > 0:                  # pausa de impacto (Xolthar sale del piso)
+            self.hitstop -= dt
+            self.red_flash = max(0.0, getattr(self, 'red_flash', 0) - dt)
+            return
         mv = self._mv()
         mx, my = pygame.mouse.get_pos()
         self.t += dt
+        self.red_flash = max(0.0, getattr(self, 'red_flash', 0) - dt)
         if hasattr(self.game, 'progress'):
             self.game.progress['play_time'] = self.game.progress.get('play_time', 0) + dt
         b, cv = self.bat, self.cave
         b.update(dt, mv, self.camera.to_world(mx, my), cv, self.bus)
         self.camera.follow(b.x, b.y, dt, vx=b.vx, vy=b.vy)
+        self._mullo_details(dt)
         self.cd, self.shake = max(0, self.cd - dt), max(0, self.shake - dt)
         if self.in_air() and b.dash_cd > 0:                   # dentro de la corriente: 2.8 s -> 1.8 s
             b.dash_cd = max(0, b.dash_cd - dt * (DASH_CD / DASH_CD_AIR - 1))
@@ -716,7 +794,10 @@ class PlayScene(Scene):
                 self.sounds.play('pickup')
                 p.hop = .35                                 # brinca a los brazos de su madre
                 self.hug_t = .7                              # Mullo la abraza un momento con sus alas
-                if p.behavior == 'gemelas' and self.boss and self.boss.wake():
+                if p.behavior == 'gemelas' and self.boss and self.boss.angry and not self.escape:
+                    self.escape = self.wake_done = True      # ya estaba despierto (furioso): empieza la huida igual
+                    self.moment('follow_air')                # Mullo recuerda el consejo: «sigue el aire»
+                elif p.behavior == 'gemelas' and self.boss and self.boss.wake():
                     self.escape = True                       # clímax: el gigante despierta, empieza la huida
                     if not self.wake_done:
                         self.wake_done = True
@@ -763,7 +844,7 @@ class PlayScene(Scene):
             d = math.dist((e.x, e.y), (b.x, b.y)) or 1
             if e.state == 'chase':
                 dmin = min(dmin, d)
-            if d < 12 + e.rad and e.stun <= 0 and e.state != 'sleep':
+            if d < 12 + e.rad and e.stun <= 0 and e.state != 'sleep' and not getattr(e, 'underground', False):
                 if b.shield_t > 0:                           # el escudo repele y aturde
                     e.stun = 1.2 * e.spec['stun'] + .3
                     k = 340 * max(.3, e.spec['push'])
@@ -783,23 +864,33 @@ class PlayScene(Scene):
                         return self.lose('lives')
                     if b.hp == 1:                             # un respiro con una sola vida (en todos los actos)
                         self.moment('low_point')
-        if self.boss and self.boss.state == 'chase' and getattr(self.boss, 'waking', 0) <= 0:
+        if self.boss and self.boss.state == 'chase' and getattr(self.boss, 'waking', 0) <= 0 and self.boss.burrow is None:
             self.boss_roar_t -= dt                            # el gigante ruge mientras te persigue
             if self.boss_roar_t <= 0:
                 self.boss_roar_t = random.uniform(4, 6)
                 self.sounds.play('roar', (self.boss.x, self.boss.y), 1.0)
+                self.light_dip(.75)
                 self.shake = max(self.shake, .25)
                 self._rockfall()                              # «todo el túnel retumba»: caen piedras del techo
             self._tunnel_warning(dt)
         if (self.boss and b.carry and b.carry.behavior == 'gemelas' and self.boss.state in ('return', 'sleep')
                 and not self.cave.in_secret(b.x, b.y)):          # sale del escondite: el gigante la vuelve a seguir
-            self.boss.wake()
+            if self.boss.wake():
+                self.light_dip()                              # la vuelve a ver
         bo = self.boss                                         # música de persecución durante la huida
         chasing = bo is not None and bo.state == 'chase' and bo.waking <= .3
         if chasing and self.sounds.music_name != 'chase':
             self.sounds.music('chase', .55)
+            self.sounds.loop('chase_drums', .001)             # tambores: arrancan junto con la música (van al compás)
         elif not chasing and self.sounds.music_name == 'chase':
             self.sounds.stop_music()
+        self._chase_intensity(dt, chasing)
+        if bo is not None:
+            bw = bo.burrow
+            warning = bw is not None and bw['phase'] == 'warn'
+            self.burrow_fx.update(dt, warning)
+            if warning:                                       # el temblor crece hasta que sale
+                self.shake = max(self.shake, .12 + .38 * min(1.0, bw['t'] / .9))
         # latido de peligro: más rápido y fuerte cuanto más cerca está quien te persigue
         self.heart_t -= dt
         if dmin < 480 and self.heart_t <= 0:
@@ -811,6 +902,136 @@ class PlayScene(Scene):
             self.spawn_t = self.diff.spawn_interval * random.uniform(.8, 1.2)
             if sum(1 for e in self.enemies if e.kind != 'boss') < self.diff.max_enemies:
                 self.spawn_enemy((b.x, b.y), 650, random.random() < .35)
+
+    # ------------------------------------------------------------ Xolthar: luces, música y romper el piso
+    DIP_T = 1.7
+
+    def light_dip(self, depth=1.0):
+        """Xolthar la vio: las luces de la cueva bajan de golpe y vuelven a subir parpadeando."""
+        if self.dip_t < 0 or self.dip_t > .5:
+            self.dip_t, self.dip_depth = 0.0, depth
+
+    def light_dim(self):
+        """Multiplicador de las luces de la cueva (1 = normales)."""
+        t = self.dip_t
+        if t < 0:
+            return 1.0
+        low = 1 - .82 * getattr(self, 'dip_depth', 1.0)
+        if t < .14:                                       # bajan de golpe
+            return 1 - (1 - low) * (t / .14)
+        if t < .4:                                        # se quedan bajas
+            return low
+        q = (t - .4) / (self.DIP_T - .4)                  # vuelven a subir con parpadeos
+        flick = .12 * math.sin(t * 37) * (1 - q) if q < .8 else 0.0
+        return max(low, min(1.0, low + (1 - low) * q * q * (3 - 2 * q) + flick))
+
+    def boss_light(self):
+        """(x, y, intensidad) de la luz roja de Xolthar, o None. Bajo tierra solo brilla por las grietas."""
+        bo = self.boss
+        if bo is None or bo.state not in ('chase', 'return') or self.state == 'wake':
+            return None
+        bw = bo.burrow
+        if bw is None:
+            k = .8 + .2 * math.sin(self.t * 7)
+            if self.boss_roar_t > 3.6:                    # más fuerte justo al rugir
+                k = 1.0
+            x, y = bo.x, bo.y
+        elif bw['phase'] == 'warn':
+            k = min(1.0, bw['t'] / .8) * (.6 + .4 * math.sin(self.t * 22))
+            x, y = bw['target']
+        elif bw['phase'] == 'emerge':
+            k = 1.0
+            x, y = bo.x, bo.y
+        elif bw['phase'] == 'dive':
+            k = max(0.0, 1 - bw['t'] / .75)
+            x, y = bw['hole']
+        else:
+            return None
+        if not self.camera.visible(x, y, 420):
+            return None
+        return x, y, k
+
+    def _chase_intensity(self, dt, chasing):
+        """La música de la huida sube cuando Xolthar está cerca: más volumen y la capa de tambores."""
+        if self.dip_t >= 0:
+            self.dip_t += dt
+            if self.dip_t > self.DIP_T:
+                self.dip_t = -1.0
+        bo, b = self.boss, self.bat
+        if not chasing or bo is None:
+            self.sounds.loop('chase_drums', 0.0)
+            return
+        d = math.dist((bo.x, bo.y), (b.x, b.y)) if bo.burrow is None or bo.burrow['phase'] == 'emerge' else 520
+        k = max(0.0, min(1.0, 1 - (d - 160) / 600))
+        self.chase_k = getattr(self, 'chase_k', 0.0)
+        self.chase_k += (k - self.chase_k) * min(1.0, dt * 2.5)
+        ch = self.sounds.music_ch
+        if ch is not None and self.sounds.music_name == 'chase':
+            v = .3 + .4 * self.chase_k
+            if abs(ch.get_volume() - v) > .03:               # (cambiarlo cada cuadro mete ruido en el navegador)
+                ch.set_volume(v)
+        self.sounds.loop('chase_drums', .06 + .6 * self.chase_k ** 1.4)
+
+    def emerge_spot(self, bo):
+        """Dónde sale Xolthar al romper el piso: DETRÁS de Mullo (nunca enfrente), en piso libre, a la vista,
+        lejos del nido y de la sala secreta. Así sigue siendo justo: si vuela bien, se le escapa."""
+        b, cv = self.bat, self.cave
+        sp = math.hypot(b.vx, b.vy)
+        if sp > 30:
+            ux, uy = b.vx / sp, b.vy / sp
+        else:                                             # quieta: «detrás» es del lado por donde venía él
+            hx, hy = bo.burrow['hole'] if bo.burrow else (bo.x, bo.y)
+            dd = math.dist((hx, hy), (b.x, b.y)) or 1
+            ux, uy = (b.x - hx) / dd, (b.y - hy) / dd
+        for dist in (270, 240, 310, 210, 350):
+            for off in (0, .45, -.45, .9, -.9, 1.35, -1.35):   # detrás o de lado-detrás; nunca enfrente
+                ca, sa = math.cos(off), math.sin(off)
+                rx, ry = -(ux * ca - uy * sa), -(ux * sa + uy * ca)
+                x, y = b.x + rx * dist, b.y + ry * dist
+                if math.dist((x, y), NEST) < SAFE_R + 200 or cv.in_secret(x, y):
+                    continue
+                if any(cv.blocked(int((x + ox) // TILE), int((y + oy) // TILE))
+                       for ox, oy in ((0, 0), (22, 0), (-22, 0), (0, 22), (0, -22))):
+                    continue
+                if not cv.los((x, y), (b.x, b.y), False):
+                    continue
+                return x, y
+        return None
+
+    def boss_event(self, kind, x, y):
+        """Efectos de Xolthar al romper el piso (sonidos, temblor, agujeros, grietas, piedras)."""
+        fx = self.burrow_fx
+        if kind == 'dive':
+            fx.hole(x, y)
+            fx.burst(x, y, 10)
+            self.sounds.play('burrow', (x, y), 1.0)
+            self.shake = max(self.shake, .3)
+        elif kind == 'under':
+            self.sounds.play('quake', (x, y), .7)
+        elif kind == 'trail':
+            fx.trail(self.ui_dt, x, y, self.cave)
+            d = math.dist((x, y), (self.bat.x, self.bat.y))
+            self.shake = max(self.shake, .22 * max(0.0, 1 - d / 700))       # se siente acercarse bajo tierra
+        elif kind == 'warn':
+            fx.warn(x, y)
+            self.sounds.play('quake', (x, y), 1.0)
+            self.sounds.play('burrow', (x, y), .8)
+            self.shake = max(self.shake, .25)
+        elif kind == 'emerge':
+            fx.hole(x, y, 1.45)                               # agujero más grande
+            fx.burst(x, y, 30, big=True)                      # estallido de piedras y nube de polvo
+            self.sounds.play('rockfall', (x, y), 1.0)
+            self.sounds.play('quake', (x, y), 1.0)
+            self.sounds.play('roar', (x, y), 1.0)
+            self.shake = max(self.shake, .7)
+            for k in range(3):                                # ondas rojas que se abren
+                self.rings.append([x, y, -k * 55, 300, (255, 80, 50)])
+            self.boss_roar_t = random.uniform(4, 6)
+            self.hitstop = .09                                # el juego se congela un instante (impacto)
+            self.red_flash = .3                               # destello rojo corto en toda la pantalla
+            self.mfx.shake = .45                              # Mullo se sobresalta
+            if self.boss and not self.boss.burrow.get('home'):
+                self.light_dip()                              # sale y la ve: las luces bajan y suben
 
     def _tunnel_warning(self, dt):
         """«Su cuerpo avanza como un tren» (5.2): antes de que llegue, cae polvo por delante y los rieles vibran."""
@@ -959,6 +1180,18 @@ class PlayScene(Scene):
     def _ambience(self, dt):
         b, cv = self.bat, self.cave
         self.act_fx.update(dt, self.camera, b, self.shake)
+        self.puffs.update(dt, b)
+        self.webs.update(dt, b)
+        self.wake.update(dt, b, self.cave)
+        self.wet.update(dt, b, self.wake)
+        if self.wisps:
+            self.wisps.update(dt, self.camera)
+        if b.over_water and 'humid' not in self.done_moments:   # la primera vez: un aviso corto de por qué va lenta
+            prog = getattr(self.game, 'progress', {})
+            if not prog.get('humid_hint') and (self.banner is None or self.banner[2] > self.BANNER_T):
+                self.done_moments.add('humid')
+                prog['humid_hint'] = True
+                self.banner = [HUMID_MESSAGE[0], HUMID_MESSAGE[1], 0.0]
         sky = cv.skylight                                      # polvo flotando en los haces de luz
         if sky:
             if len(self.sky_dust) < 26:
@@ -990,17 +1223,17 @@ class PlayScene(Scene):
                 for sa in self.salamanders:                   # una gota que cae cerca también las asusta
                     if math.dist((sa.x, sa.y), (d[0], d[1] + d[3])) < 60:
                         sa.scare(d[0], d[1] + d[3])
+                f = self.puffs.near(d[0], d[1] + d[3], 22)    # si cae sobre un hongo, suelta esporas
+                if f:
+                    self.puffs.burst_at(*f)
         self.drops = [d for d in self.drops if d[2] < .9]
-        for m in self.mist:
-            m[0] += m[3] * dt
-            m[4] += dt
         if self.cfg['theme'] == 'mine':                       # corriente de aire fresco hacia la salida
             cam = self.camera
             want = 90 if self.escape else 55
             for _ in range(10):                               # la corriente se ve solo donde sopla (a lo largo de los rieles)
                 if len(self.air) >= want:
                     break
-                x, y = cam.x + random.uniform(0, W), cam.y + random.uniform(0, H)
+                x, y = cam.x + random.uniform(0, VIEW_W), cam.y + random.uniform(0, VIEW_H)
                 if cv.in_current(x, y):
                     self.air.append([x, y, random.uniform(1.2, 2.4)])
             sp = 120 if self.escape else 75
@@ -1010,6 +1243,64 @@ class PlayScene(Scene):
                 a[1] += fy * sp * dt
                 a[2] -= dt
             self.air = [a for a in self.air if a[2] > 0 and cam.visible(a[0], a[1], 40)]
+
+    def night_minutes(self):
+        """Minutos desde la medianoche según el reloj de la noche del HUD (00:00 a 05:30)."""
+        cfg = self.cfg
+        return cfg['start_min'] + (cfg['end_min'] - cfg['start_min']) * min(1.0, self.t / cfg['duration'])
+
+    def night_frac(self):
+        return max(0.0, min(1.0, self.night_minutes() / DEPARTURE_MIN))
+
+    def _mullo_details(self, dt):
+        """Respira agitada al terminar un impulso o al dejar de perseguirla un bicho; viento de los pasillos."""
+        b = self.bat
+        if self._was_dash and b.dash_t <= 0:
+            self.mfx.panting(self.mfx.PANT_DASH)
+        self._was_dash = b.dash_t > 0
+        chased = any(e.state == 'chase' and e.kind != 'boss' and math.dist((e.x, e.y), (b.x, b.y)) < 420
+                     for e in self.enemies) or bool(self.boss and self.boss.state == 'chase')
+        if self._was_chased and not chased:
+            self.mfx.panting(self.mfx.PANT_CHASE)
+        self._was_chased = chased
+        self.mfx.update(dt, b)
+        self.wind_t -= dt
+        if self.wind_t <= 0:                                  # qué tan angosto es el pasillo (cada 0.25 s)
+            self.wind_t = .25
+            cv = self.cave
+            tx, ty = int(b.x // TILE), int(b.y // TILE)
+            open_ = sum(1 for j in range(-2, 3) for i in range(-2, 3) if not cv.solid(tx + i, ty + j))
+            self._wind_target = .3 * max(0.0, min(1.0, (13 - open_) / 6)) if not cv.in_secret(b.x, b.y) else 0.0
+        self.wind_vol += (getattr(self, '_wind_target', 0.0) - self.wind_vol) * min(1.0, dt * 2.5)
+        self.sounds.loop('wind', self.wind_vol)
+
+    def _draw_stars(self, c):
+        """Estrellitas que se ven por la grieta del techo: titilan, se recorren despacio a lo largo de la abertura
+        conforme pasa la noche y se apagan al acercarse el amanecer."""
+        crack = getattr(self.cave, 'sky_crack', None)
+        if not crack:
+            return
+        f = self.night_frac()
+        dim = max(0.0, 1 - max(0.0, f - .8) / .2)
+        if dim <= 0:
+            return
+        center, widths, (nx, ny) = crack
+        n = len(center) - 1
+        ox, oy = int(self.camera.x), int(self.camera.y)
+        for u0, lat, ph, r in self.stars:
+            u = (u0 + f * .35) % 1.0
+            q = u * n
+            i = min(n - 1, int(q))
+            k = q - i
+            (ax, ay), (bx, by) = center[i], center[i + 1]
+            w = widths[i] + (widths[i + 1] - widths[i]) * k
+            if w < 2.5:
+                continue                                          # en las puntas la grieta es muy angosta
+            x = ax + (bx - ax) * k + nx * w * lat - ox
+            y = ay + (by - ay) * k + ny * w * lat - oy
+            b = dim * (.4 + .6 * (.5 + .5 * math.sin(self.t * 2.3 + ph)) ** 2)
+            g = int(240 * b)
+            c.fill((g, g, min(255, int(g * 1.06))), (int(x), int(y), r, r))
 
     def _friendly_scare(self, dt):
         """Al poco de salir del nido, una arañita baja de golpe frente a Mullo, se asusta ella sola y se va."""
@@ -1047,6 +1338,7 @@ class PlayScene(Scene):
         for sa in self.salamanders:                           # la salamandra se hunde junto con su piedra
             under = [st.sink for st in self.stones if math.dist((st.x, st.y), (sa.x, sa.y)) < st.r + 4]
             sa.sub = max(under) if under else max(0.0, sa.sub - dt * 2.5)
+        v_before = [rc.v for rc in self.rail_carts]
         for rc in self.rail_carts:                           # vagonetas: el impulso las echa a rodar por los rieles
             if not rc.moving and b.dash_t > 0 and math.dist((rc.x, rc.y), (b.x, b.y)) < 30:
                 rc.push(b.dash_dir[0], b.dash_dir[1])
@@ -1057,7 +1349,7 @@ class PlayScene(Scene):
                 self.bus.emit(NoiseEvent(rc.x, rc.y, rc.NOISE_R, (255, 190, 120), 'impact'))
             if rc.moving:
                 for e in self.enemies:                        # atropella y aturde a los bichos (a Xolthar no)
-                    if math.dist((e.x, e.y), (rc.x, rc.y)) < rc.HIT_R + e.rad:
+                    if math.dist((e.x, e.y), (rc.x, rc.y)) < rc.HIT_R + e.rad and not getattr(e, 'underground', False):
                         if e.kind == 'boss':
                             rc.stop()
                             self.sounds.play('clang', (rc.x, rc.y), 1.0)
@@ -1067,6 +1359,10 @@ class PlayScene(Scene):
                             e.vx, e.vy = (e.x - rc.x) / d * 260, (e.y - rc.y) / d * 260
                             self.sounds.play('impact', (e.x, e.y), 1.0)
                             self.rings.append([e.x, e.y, 0, 60, (255, 200, 120)])
+        for rc, v0 in zip(self.rail_carts, v_before):        # frenó de golpe (tope o Xolthar): se le cae carbón
+            if abs(v0) > 90 and rc.v == 0:
+                self.coal.spill(rc.x, rc.y, rc.ang, v0)
+        self.coal.update(dt, self.cave)
         for can in self.cans:
             if math.dist(can.pos, (b.x, b.y)) < 22 and math.hypot(b.vx, b.vy) > 30:
                 can.strike(b.x, b.y, min(1.4, .6 + math.hypot(b.vx, b.vy) / 300))
@@ -1079,18 +1375,19 @@ class PlayScene(Scene):
     def draw(self, screen):
         c, b, cam, cv = self.canvas, self.bat, self.camera, self.cave
         ix, iy = int(cam.x), int(cam.y)
-        c.blit(cv.bg, (0, 0), (ix, iy, W, H))
+        c.blit(cv.bg, (0, 0), (ix, iy, VIEW_W, VIEW_H))
         if cv.web:                                           # cortina de telarañas
             for tx, ty in cv.web:
                 x, y = tx * TILE, ty * TILE
                 if cam.visible(x, y, 40):
                     c.blit(self.web_img, cam.apply(x, y))
-        if b.over_water or self.cfg['theme'] == 'lake':      # ondas en el agua bajo Mullo
-            if b.over_water:
-                for k in range(2):
-                    p = ((self.t * .8 + k * .5) % 1)
-                    sx, sy = cam.apply(b.x, b.y + 10)
-                    ring(c, sx, sy, 8 + 30 * p, (90, 120, 200), .5 * (1 - p), 1)
+        self.webs.draw(c, cam)                                # telarañas que se mecen al pasar Mullo
+        self.molt_fx.draw(c, cam, self.t, self.escape or self.shake > .15)   # la piel de Xolthar con el aire
+        self.coal.draw(c, cam)                                # trocitos de carbón
+        if self.boss:
+            self.burrow_fx.draw_floor(c, cam, self.t)         # agujeros, grietas y onda de Xolthar
+        self.wake.draw(c, cam)                                # estela de ondas en el agua
+        self.wake.draw_reflection(c, cam, b, cv, self.t)   # reflejo de Mullo en el agua
         for st in self.stones:
             if cam.visible(st.x, st.y, 60):
                 st.draw(c, cam)
@@ -1128,11 +1425,21 @@ class PlayScene(Scene):
                 ui.draw_pup(c, bx + (k * 14 - 7 if p.count > 1 else 0), by + 16, self.t * 12 + k, 0.0, PUP_SC,
                             p.looks[k % len(p.looks)], self.t)
         self._draw_mullo(c, bx, by)
+        self.mfx.draw(c, cam)                                 # vaporcitos al respirar y polvo al sacudirse
+        if self.boss:
+            self.burrow_fx.draw_air(c, cam)                   # tierra y piedras que salen del piso
         self.light.apply(c, self, self.t)
+        if self.wisps:                                        # jirones de niebla del lago (se abren junto a Mullo)
+            self.wisps.draw(c, cam, b)
+        self.wet.draw(c, cam, b, self.t)                      # gotitas en las alas y vaho (brillan con su luz)
         self._draw_after_light(c)
         if self._mullo_over_pups():                           # Mullo vuela por encima de sus crías: la vuelve a pintar
             self._draw_mullo(c, bx, by)                       # sobre sus burbujitas y ondas (su luz no la oscurece)
-        self.act_fx.draw(c, cam, b, max(220, BRIGHTNESS_LEVELS[self.game.brightness][2] * 1.2))
+        reach = max(220, BRIGHTNESS_LEVELS[self.game.brightness][2] * 1.2)
+        self.act_fx.draw(c, cam, b, reach)
+        self.glints.draw(c, cam, b, reach, self.t)            # destellos de los cristales en la luz de Mullo
+        self.shells.draw(c, cam, b, self.enemies, reach, self.t)   # brillo metálico de los escarabajos
+        self.puffs.draw(c, cam)                               # esporas de los hongos que rozó
         if self.boss and self.boss.state == 'chase' and self.boss.waking <= 0 and self.cave.rails:
             self._draw_rail_buzz(c)
         if self.fungi_wave:
@@ -1154,8 +1461,18 @@ class PlayScene(Scene):
                 sx, sy = self.camera.apply(x, y)
                 k = min(1, age / .15) * max(0, 1 - (age - .9) / .5) if age > .9 else min(1, age / .15)
                 ui.mini_heart(c, sx + math.sin(age * 6) * 2, sy, r * (.7 + .3 * k), (int(255 * k), int(110 * k), int(160 * k)))
+        amp = 3 * min(1, self.shake / .3)
+        ox, oy = (random.randint(-round(amp), round(amp)), random.randint(-round(amp), round(amp))) if amp >= .5 else (0, 0)
+        if self.zoomed:                                      # navegador: el mundo se amplía UNA vez, directo a la pantalla
+            pygame.transform.scale(c, (W, H), screen)         # (y lo de encima, el HUD, va nítido a resolución completa)
+            if ox or oy:
+                screen.scroll(ox, oy)
+            c = screen
         if self.pings:
             self._draw_pings(c)
+        if getattr(self, 'red_flash', 0) > 0:                 # destello rojo cuando Xolthar sale del piso
+            k = (self.red_flash / .3) ** 1.5
+            c.fill((int(80 * k), int(8 * k), int(4 * k)), special_flags=pygame.BLEND_RGB_ADD)
         ui.draw_hud(c, self)
         if self.banner:
             self._draw_banner(c)
@@ -1165,10 +1482,9 @@ class PlayScene(Scene):
             ui.text(c, ui.F_S, self.toast, W // 2, 118, (220, 215, 235), True)
         if self.big_map:
             ui.draw_minimap(c, self, big=True)
-        amp = 3 * min(1, self.shake / .3)
-        ox, oy = (random.randint(-round(amp), round(amp)), random.randint(-round(amp), round(amp))) if amp >= .5 else (0, 0)
-        screen.fill((0, 0, 0))
-        screen.blit(c, (ox, oy))
+        if c is not screen:
+            screen.fill((0, 0, 0))
+            screen.blit(c, (ox, oy))
         if self.state == 'wake':
             self._draw_wake(screen)
         elif self.state != 'play':
@@ -1177,7 +1493,8 @@ class PlayScene(Scene):
     def _draw_mullo(self, c, bx, by):
         b = self.bat
         if b.inv <= 0 or int(self.t * 12) % 2:
-            ui.draw_bat_tilted(c, bx, by, b.flap, b.tilt, **self.mullo_pose())   # «nunca deja de aletear, ni quieta»
+            sc, wiggle = self.mfx.pose(self.t)                # respira agitada / se sacude
+            ui.draw_bat_tilted(c, bx, by, b.flap, b.tilt + wiggle, sc, **self.mullo_pose())   # «nunca deja de aletear, ni quieta»
 
     def _mullo_over_pups(self):
         b = self.bat
@@ -1310,9 +1627,10 @@ class PlayScene(Scene):
                 if t < 4.5:                                   # la orilla de la pantalla late en violeta
                     v = getattr(self, '_violet', None)
                     if v is None:
-                        v = self._violet = pygame.Surface((W, H), pygame.SRCALPHA)
+                        cw, ch = c.get_size()
+                        v = self._violet = pygame.Surface((cw, ch), pygame.SRCALPHA)
                         for i in range(0, 90, 3):
-                            pygame.draw.rect(v, (120, 80, 220, int(90 * (1 - i / 90) ** 2)), (i, i, W - 2 * i, H - 2 * i), 3)
+                            pygame.draw.rect(v, (120, 80, 220, int(90 * (1 - i / 90) ** 2)), (i, i, cw - 2 * i, ch - 2 * i), 3)
                     v.set_alpha(int(255 * math.sin(math.pi * min(1, t / 4.5)) * (.6 + .4 * math.sin(t * 5))))
                     c.blit(v, (0, 0))
             elif kind == 'echo':                              # la sala junta sus rebotes y le devuelve su voz
@@ -1375,7 +1693,7 @@ class PlayScene(Scene):
         cam, b = self.camera, self.bat
         cx, cy = W / 2, H / 2
         for x, y, age in self.pings:
-            sx, sy = cam.apply(x, y)
+            sx, sy = cam.to_screen(x, y)
             ang = math.atan2(sy - cy, sx - cx)
             k = min((W / 2 - 26) / abs(math.cos(ang) or 1e-6), (H / 2 - 26) / abs(math.sin(ang) or 1e-6))
             ex, ey = cx + math.cos(ang) * k, cy + math.sin(ang) * k
@@ -1520,7 +1838,7 @@ class PlayScene(Scene):
         screen.blit(v, (0, 0))
         if t > .8:                                           # los ojos del gigante se encienden
             bo = self.boss
-            ex, ey = self.camera.apply(bo.x, bo.y)
+            ex, ey = map(int, self.camera.to_screen(bo.x, bo.y))
             g = min(1, (t - .8) / .4)
             rr = int(30 + 60 * g * (1 - max(0, t - 1.6)))
             if rr > 0:
@@ -1546,12 +1864,8 @@ class PlayScene(Scene):
                         p.asleep if p.behavior == 'ratos' else None)
 
     def _draw_after_light(self, c):
-        """Lo que debe verse aun en la oscuridad: ojos, nombres, niebla, corriente de aire y luz del amanecer."""
+        """Lo que debe verse aun en la oscuridad: ojos, nombres, corriente de aire y luz del amanecer."""
         b, cam = self.bat, self.camera
-        for x, y, img, vx, ph in self.mist:                  # niebla baja del lago
-            if cam.visible(x, y, 160):
-                sx, sy = cam.apply(x + math.sin(ph * .3) * 30, y)
-                c.blit(img, (sx - img.get_width() // 2, sy - img.get_height() // 2))
         sky = self.cave.skylight                             # rayos que entran por la grieta del techo (referencia del cielo)
         if sky and cam.visible(sky[0], sky[1] + 150, 300):
             sx, sy = cam.apply(*sky)
@@ -1564,6 +1878,7 @@ class PlayScene(Scene):
                 px, py = cam.apply(x, y)
                 f = max(0, 1 - (y - sky[1]) / 280) * (.5 + .5 * math.sin(ph * 2))
                 c.fill(tuple(int(v * f) for v in dcol), (int(px), int(py), 2, 2))
+            self._draw_stars(c)
         for a in self.air:
             fx, fy = self.cave.flow_dir(a[0], a[1])
             sx, sy = cam.apply(a[0], a[1])
@@ -1588,7 +1903,7 @@ class PlayScene(Scene):
                 continue
             d = math.dist((e.x, e.y), (b.x, b.y))
             if d < reach * (1.8 if e.kind == 'boss' else 1) or (self.echo_t > 0 and d < SCREECH_R * 2.4):
-                if e.state == 'sleep':
+                if e.state == 'sleep' or getattr(e, 'burrow', None) is not None:
                     continue
                 col = (120, 120, 60) if e.stun > 0 else ((255, 40, 40) if e.state == 'chase' else (200, 90, 40))
                 ex, ey = cam.apply(e.x, e.y)
@@ -1613,6 +1928,9 @@ class PlayScene(Scene):
                 if q < .4:
                     for sd in (-1, 1):
                         c.fill((150, 190, 230), (int(sx + sd * (2 + 10 * q)), int(sy - 6 * q + 12 * q * q), 1, 1))
+        for sa in self.salamanders:                           # escondidas: burbujitas y, a ratos, solo los ojitos
+            if sa.state == 'hidden' and cam.visible(sa.x, sa.y, 20) and math.dist((sa.x, sa.y), (b.x, b.y)) < 520:
+                sa.draw_peek(c, cam)
         for sa in self.salamanders:                           # ojitos que reflejan un poco de luz
             if sa.visible and sa.sub < .5 and cam.visible(sa.x, sa.y, 20):
                 hx, hy = cam.apply(sa.x + math.cos(sa.ang) * 9, sa.y + math.sin(sa.ang) * 9)

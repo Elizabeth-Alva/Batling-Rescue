@@ -1,16 +1,41 @@
 """Récords de tiempo de la historia completa (los 3 niveles). Menos tiempo = mejor lugar.
 
-Se guardan solos (sin nombre) en records.json junto al juego (escritorio) o en el localStorage del navegador (web).
+Se guardan solos (sin nombre): en records.json (junto al juego, o en la carpeta del usuario si es el .exe)
+o en el localStorage del navegador (web).
 Cada marca: {"time": 812.55, "date": "09/11/2026 20:15"}.
 """
 import json
 import os
+import sys
 import time
 
 from settings import IS_WEB
 
 TOP_N = 10
-_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'records.json')
+
+
+def _records_path():
+    """Dónde se guardan los récords en la computadora.
+    · Jugando desde el código (python main.py / JUGAR.bat): records.json junto al juego, como siempre.
+    · Como aplicación (.exe hecho con PyInstaller): en la carpeta del usuario (%APPDATA%\\BatlingRescue en Windows),
+      porque la carpeta del .exe es temporal y se borra al cerrar el juego."""
+    if not getattr(sys, 'frozen', False):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'records.json')
+    if sys.platform == 'win32':
+        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    elif sys.platform == 'darwin':
+        base = os.path.expanduser('~/Library/Application Support')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    folder = os.path.join(base, 'BatlingRescue')
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:
+        pass
+    return os.path.join(folder, 'records.json')
+
+
+_FILE = _records_path()
 _WEB_KEY = 'batling_rescue_records'
 _data = None
 

@@ -28,6 +28,7 @@ from scenes.play import PlayScene  # noqa: E402
 from enemies import Enemy, Boss, pick_kind  # noqa: E402
 from player import Bat  # noqa: E402
 from camera import Camera  # noqa: E402
+import ui  # noqa: E402
 
 
 class OpenCave:
@@ -566,7 +567,8 @@ class GameTests(unittest.TestCase):
     def test_title_menu(self):
         from scenes.title import TitleScene
         ts = TitleScene(self.game)
-        self.assertEqual(ts.main[:2], ['Jugar', 'Instrucciones'])
+        self.assertEqual(ts.main[0], 'Jugar')
+        self.assertIn('Instrucciones', ts.main)
         self.assertNotIn('Capítulos', ts.main)
 
     def test_minimap_always_and_big_map(self):
@@ -665,12 +667,12 @@ class GameTests(unittest.TestCase):
         for _ in range(120):
             b.update(1 / 60, (1, 0), (0, 0), OpenCave(), EventBus())
             cam.follow(b.x, b.y, 1 / 60, vx=b.vx, vy=b.vy)
-        self.assertLess(abs(b.x - (cam.x + W / 2)), 15)      # sin retraso apreciable
+        self.assertLess(abs(b.x - (cam.x + cam.vw / 2)), 15)      # sin retraso apreciable
         stop = b.x
         for _ in range(120):                                 # quieto: la cámara se centra sin oscilar
             b.update(1 / 60, (0, 0), (0, 0), OpenCave(), EventBus())
             cam.follow(b.x, b.y, 1 / 60, vx=b.vx, vy=b.vy)
-        self.assertLess(abs(b.x - (cam.x + W / 2)), 1.5)
+        self.assertLess(abs(b.x - (cam.x + cam.vw / 2)), 1.5)
         self.assertGreater(stop, 1200)
 
     # ------------------------------------------------------------ visibilidad
@@ -1381,6 +1383,7 @@ class TimeScoreTests(unittest.TestCase):
         s.on_noise(NoiseEvent(b.x + 100, b.y, 200, (0, 0, 0), 'pup'))     # en pantalla: nada
         self.assertEqual(len(s.pings), 1)
         s.draw(pygame.display.get_surface())
+        s.pups = []                                                       # (que ninguna cría chille mientras tanto)
         for _ in range(100):
             s.update(1 / 60)
         self.assertEqual(s.pings, [])
@@ -1495,6 +1498,7 @@ class TimeScoreTests(unittest.TestCase):
         s.enemies = []
         b = s.bat
         p = s.pups[0]
+        s.pups = [p]                                                # (solo esta cría: que no haya otra más cerca)
         b.x, b.y = p.x - 200, p.y                                   # cría a la derecha, aún sin encontrar
         p.found = False
         for _ in range(30):
@@ -1551,6 +1555,622 @@ class TimeScoreTests(unittest.TestCase):
         r.update(1 / 60)
         r.draw(pygame.display.get_surface())
 
+class AmbientTouchTests(unittest.TestCase):
+    """Ambiente que reacciona a Mullo (no cambia la historia ni las reglas)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    fresh = GameTests.fresh
+
+    def test_lake_wisps_stay_on_water_and_open_near_mullo(self):
+        s = self.fresh(2)
+        self.assertFalse(hasattr(s, 'mist'))                              # la niebla vieja ya no existe
+        self.assertIsNone(self.fresh(1).wisps)                            # solo en el Lago Negro
+        w = s.wisps
+        self.assertGreater(len(w.items), 0)
+        for _ in range(600):                                              # 10 s: siempre sobre el agua
+            w.update(1 / 60, s.camera)
+        for it in w.items:
+            self.assertTrue(s.cave.is_water(it[0], it[1]))
+        it = w.items[0]
+        it[5] = 1.0
+        s.camera.x, s.camera.y = it[0] - W / 2, it[1] - H / 2
+        scr = pygame.Surface((W, H))
+        s.bat.x, s.bat.y = it[0], it[1]                                   # Mullo encima: casi no se ve
+        w.items = [it]
+        w.draw(scr, s.camera, s.bat)
+        cx, cy = int(it[0] - s.camera.x), int(it[1] - s.camera.y)
+
+        def glow():
+            return sum(scr.get_at((cx + dx, cy + dy))[2] for dx in range(-60, 61, 6) for dy in range(-12, 13, 4))
+        near = glow()
+        scr.fill((0, 0, 0))
+        s.bat.x, s.bat.y = it[0] + 900, it[1]                             # Mullo lejos: se ve más
+        w.draw(scr, s.camera, s.bat)
+        self.assertGreater(glow(), near)
+
+    def test_fungus_puffs_when_brushed(self):
+        s = self.fresh(1)
+        fungi = s.cave.fungi
+        fx, fy = next(f for f in fungi if all(abs(f[0] - o[0]) > 40 or abs(f[1] - o[1]) > 40
+                                               for o in fungi if o is not f))       # un hongo sin vecinos
+        b = s.bat
+        b.x, b.y, b.vx, b.vy = fx + 5, fy, 200, 0
+        s.puffs.update(1 / 60, b)
+        alive = [q for q in s.puffs.p if q[4] < q[5]]
+        self.assertEqual(len(alive), s.puffs.per)
+        s.puffs.update(1 / 60, b)                                          # el mismo hongo descansa un rato
+        self.assertEqual(len([q for q in s.puffs.p if q[4] < q[5]]), s.puffs.per)
+        s.puffs.draw(pygame.display.get_surface(), s.camera)
+
+    def test_cobweb_sways_without_spiders(self):
+        s = self.fresh(1)
+        self.assertGreater(len(s.webs.webs), 0)
+        w = s.webs.webs[0]
+        b = s.bat
+        b.x, b.y, b.vx, b.vy = w['x'], w['y'] + 10, 120, 0
+        for _ in range(5):
+            s.webs.update(1 / 60, b)
+        self.assertGreater(w['agit'], .9)
+        s.camera.x, s.camera.y = w['x'] - W / 2, w['y'] - H / 2
+        s.webs.draw(pygame.display.get_surface(), s.camera)
+        self.assertEqual(len(w['frames']), 2 * s.webs.FRAMES)            # cuadros hechos solo al moverse
+        b.vx = b.vy = 0
+        for _ in range(200):
+            s.webs.update(1 / 60, b)
+        self.assertEqual(w['agit'], 0.0)
+        self.assertNotIn('peek', w)                                       # sin arañitas que se asoman
+
+    def test_water_wake_and_reflection(self):
+        s = self.fresh(2)
+        cv, b = s.cave, s.bat
+        i = next(i for i in range(cv.w * cv.h) if cv.water[i])
+        b.x, b.y, b.vx, b.vy = (i % cv.w) * TILE + 16, (i // cv.w) * TILE + 16, 150, 0
+        b.over_water = True
+        for _ in range(30):
+            s.wake.update(1 / 60, b)
+        self.assertGreater(len([r for r in s.wake.rings if r[2] < r[3]]), 1)
+        scr = pygame.display.get_surface()
+        s.wake.draw(scr, s.camera)
+        s.wake.draw_reflection(scr, s.camera, b, cv, 1.0)
+
+    def test_water_keeps_moving_when_mullo_hovers(self):
+        s = self.fresh(2)
+        cv, b = s.cave, s.bat
+        i = next(i for i in range(cv.w * cv.h) if all(cv.water[i + d] for d in (0, 1, -1, 2, -2, cv.w, -cv.w)))
+        b.x, b.y, b.vx, b.vy = (i % cv.w) * TILE + 16, (i // cv.w) * TILE + 16, 0, 0
+        b.over_water = True
+        kinds = set()
+        for _ in range(180):                                              # 3 s quieta encima del agua
+            b.flap += 1 / 60 * 14
+            s.wake.update(1 / 60, b, cv)
+            kinds |= {r[4] for r in s.wake.rings if r[2] < r[3]}
+        self.assertIn(1, kinds)                                           # anillo debajo de ella
+        self.assertIn(2, kinds)                                           # hoyuelos de las alas
+
+    def test_hidden_salamander_bubbles_and_peeks(self):
+        s = self.fresh(2)
+        sa = s.salamanders[0]
+        far = type('B', (), {'x': sa.x + 400, 'y': sa.y})()
+        sa.state, sa.st, sa.hide_for, sa.peek = 'hidden', 0.0, 9.0, [1.0, 1.5]
+        sa.update(1 / 60, s.cave, far)
+        self.assertGreater(len(sa.bubbles), 0)                            # burbujitas donde se escondió
+        for _ in range(89):
+            sa.update(1 / 60, s.cave, far)
+        self.assertGreater(sa.peek_k, 0)
+        near = type('B', (), {'x': sa.x + 40, 'y': sa.y})()                # Mullo se acerca: se hunde
+        sa.update(1 / 60, s.cave, near)
+        self.assertEqual(sa.peek_k, 0)
+
+    def test_crystals_glint_in_light(self):
+        s = self.fresh(3)
+        x, y, _ = s.cave.crystals[0]
+        s.bat.x, s.bat.y = x + 40, y
+        s.camera.x, s.camera.y = x - W / 2, y - H / 2
+        s.glints.draw(pygame.display.get_surface(), s.camera, s.bat, 300, 0.6)
+
+    def test_beetle_shell_glints_in_light(self):
+        s = self.fresh(2)
+        b = s.bat
+        e = Enemy(b.x + 50, b.y, 'beetle')
+        s.camera.x, s.camera.y = b.x - W / 2, b.y - H / 2
+        scr = pygame.Surface((W, H))
+        s.shells.draw(scr, s.camera, b, [e], 300, (.5 - (e.x * .013 + e.y * .007)) / .45)   # reflejo en lo más alto
+        self.assertGreater(max(scr.get_at((int(e.x - s.camera.x) + dx, int(e.y - s.camera.y) + dy))[2]
+                               for dx in range(-12, 13) for dy in range(-12, 13)), 60)
+        far = pygame.Surface((W, H))                                       # fuera de su luz no brilla
+        s.shells.draw(far, s.camera, b, [Enemy(b.x + 400, b.y, 'beetle')], 300, 0.0)
+        self.assertEqual(pygame.transform.average_color(far)[:3], (0, 0, 0))
+
+
+class FluidityAndDetailsTests(unittest.TestCase):
+    """Fluidez (rutas rápidas, paso de tiempo parejo) y detalles de ambiente sin cambiar la historia ni las reglas."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    fresh = GameTests.fresh
+
+    def test_path_same_as_plain_bfs_and_fast_fail(self):
+        from collections import deque
+        cave = CaveMap(2)
+        bm = cave._blockmap(True)
+
+        def bfs_len(a, b):
+            w = cave.w
+            s, t = int(a[1] // TILE) * w + int(a[0] // TILE), int(b[1] // TILE) * w + int(b[0] // TILE)
+            seen, dq = {s: 0}, deque([s])
+            while dq:
+                cur = dq.popleft()
+                if cur == t:
+                    return seen[cur]
+                for nb in (cur + 1, cur - 1, cur + w, cur - w):
+                    if not bm[nb] and nb not in seen:
+                        seen[nb] = seen[cur] + 1
+                        dq.append(nb)
+            return None
+        rnd = __import__('random').Random(5)
+        free = [i for i in range(len(bm)) if not bm[i]]
+        for _ in range(40):
+            a, b = [((i % cave.w) * TILE + 16, (i // cave.w) * TILE + 16) for i in rnd.sample(free, 2)]
+            p, n = cave.path(a, b), bfs_len(a, b)
+            self.assertEqual(None if p is None else len(p), n)        # misma ruta corta (o ninguna)
+
+    def test_smooth_dt_evens_out_jitter(self):
+        from collections import deque
+        from game import _smooth_dt
+        hist = deque(maxlen=8)
+        out = [_smooth_dt(hist, d, .05) for d in [.015, .018] * 10]
+        self.assertLess(max(out[8:]) - min(out[8:]), .001)               # 15/18 ms -> casi constante
+        self.assertAlmostEqual(_smooth_dt(hist, .2, .05), .05)          # tope cuando se congela la ventana
+
+    def test_mullo_pants_after_dash_and_shakes_after_bumps(self):
+        s = self.fresh(1)
+        b = s.bat
+        s._was_dash, b.dash_t = True, 0.0
+        s._mullo_details(1 / 60)
+        self.assertGreater(s.mfx.pant, 0)
+        sc, _ = s.mfx.pose(.1)
+        self.assertNotEqual(sc, 1.0)                                     # el cuerpo sube y baja
+        for _ in range(3):
+            s.mfx.impact()
+        for _ in range(15):
+            s.mfx.update(1 / 60, b)
+        self.assertGreater(s.mfx.shake, 0)                               # se sacude el polvo
+        s.draw(pygame.display.get_surface())
+
+    def test_dust_swirls_away_from_wings(self):
+        s = self.fresh(3)
+        b = s.bat
+        q = s.act_fx.p[0]
+        q[:] = [b.x + 30, b.y, 0.0, 0.0, 0.0, 9.0, 0.0, 'dust']
+        b.vx = 200
+        s.camera.x, s.camera.y = b.x - W / 2, b.y - H / 2
+        s.act_fx.update(1 / 60, s.camera, b)
+        self.assertGreater(math.hypot(q[2], q[3]), 1)
+
+    def test_stunned_beetle_flips_and_hunter_grooms(self):
+        scr = pygame.Surface((W, H))
+        cam = Camera(1000, 1000)
+        e = Enemy(1000, 1000, 'beetle')
+        e.stun = 1.0
+        ui.draw_enemy(scr, *cam.apply(e.x, e.y), e, cam)
+        h = Enemy(1000, 1000, 'hunter')
+        h.idle = 1.5
+        ui.draw_enemy(scr, *cam.apply(h.x, h.y), h, cam)
+
+    def test_night_light_stars_wind_coal_and_molt(self):
+        from lighting import mouth_color
+        self.assertNotEqual(mouth_color(0.0), mouth_color(1.0))         # azul noche -> rosado
+        s = self.fresh(1)
+        self.assertAlmostEqual(s.night_frac(), 0.0)
+        s.t = s.cfg['duration']
+        self.assertAlmostEqual(s.night_frac(), 120 / 330)
+        s._draw_stars(pygame.display.get_surface())
+        s.sounds.loop('wind', .2)
+        s.sounds.loop('wind', 0.0)
+        m = self.fresh(3)
+        if m.rail_carts:
+            rc = m.rail_carts[0]
+            m.coal.spill(rc.x, rc.y, rc.ang, 200)
+            self.assertGreater(len([q for q in m.coal.p if q[6] < q[7]]), 0)
+        if m.molt_fx.ok:
+            self.assertEqual(len(m.molt_fx.frames), 2 * m.molt_fx.FRAMES)
+        m.draw(pygame.display.get_surface())
+
+    def test_drip_on_fungus_releases_spores(self):
+        s = self.fresh(1)
+        fx, fy = s.cave.fungi[0]
+        s.drops = [[fx, fy - 30, .34, 30.0]]
+        s._ambience(1 / 60)
+        self.assertGreater(len([q for q in s.puffs.p if q[4] < q[5]]), 0)
+
+
+class LayerOrderTests(unittest.TestCase):
+    """Las telarañas y la piel de Xolthar se repintan al moverse: lo que guardan debajo debe incluir todo el fondo
+    (nido incluido). Antes la piel tapaba medio nido en el Acto III."""
+
+    def test_animated_patches_keep_the_nest(self):
+        import random as _r
+        for seed in range(6):
+            _r.seed(seed)
+            cave = CaveMap(3)
+            rect, clean = cave.molt_clean
+            bg = cave.bg.subsurface(rect)
+            from art import molt_surface
+            x, y, ang = cave.molt
+            img = molt_surface(ang, 170, 150)
+            mask = pygame.mask.from_surface(img, 1)
+            ix, iy = img.get_rect(center=(int(x), int(y))).topleft
+            diff = 0
+            for py in range(0, rect.h, 2):                                 # fuera de la piel, el pedazo guardado = fondo
+                for px in range(0, rect.w, 2):
+                    mx, my = rect.x + px - ix, rect.y + py - iy
+                    inside = 0 <= mx < img.get_width() and 0 <= my < img.get_height() and mask.get_at((mx, my))
+                    if not inside and clean.get_at((px, py)) != bg.get_at((px, py)):
+                        diff += 1
+            self.assertEqual(diff, 0)
+            self.assertGreater(math.dist((x, y), NEST), SAFE_R + 150)      # y queda lejos del nido
+
+    def test_cobweb_patches_match_background_outside_web(self):
+        import random as _r
+        _r.seed(3)
+        cave = CaveMap(1)
+        for w in cave.cobweb_info[:8]:
+            rect, clean = w['rect'], w['clean']
+            bg = cave.bg.subsurface(rect)
+            same = sum(clean.get_at((px, py)) == bg.get_at((px, py))
+                       for py in range(0, rect.h, 3) for px in range(0, rect.w, 3))
+            total = len(range(0, rect.h, 3)) * len(range(0, rect.w, 3))
+            self.assertGreater(same / total, .6)                         # solo cambian los hilos
+
+
+class HumidAirTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    fresh = GameTests.fresh
+
+    def test_wings_get_wet_over_water_and_hint_shows_once(self):
+        s = self.fresh(2)
+        cv, b = s.cave, s.bat
+        i = next(i for i in range(cv.w * cv.h) if cv.water[i])
+        b.x, b.y = (i % cv.w) * TILE + 16, (i // cv.w) * TILE + 16
+        s.banner = None
+        s.done_moments.add('echo_room')                                   # (que no salga el mensaje de la Sala del Eco)
+        for _ in range(60):
+            s.update(1 / 60)
+            b.x, b.y = (i % cv.w) * TILE + 16, (i // cv.w) * TILE + 16
+        self.assertGreater(s.wet.k, .5)                                  # alas mojadas
+        self.assertIsNotNone(s.banner)
+        self.assertEqual(s.banner[0], 'Aire húmedo')
+        s.draw(pygame.display.get_surface())
+        s2 = PlayScene(self.game, 2)                                     # en la misma partida ya no se repite
+        s2.banner = None
+        s2.bat.x, s2.bat.y = b.x, b.y
+        s2.update(1 / 60)
+        self.assertIsNone(s2.banner)
+
+
+class XoltharTensionTests(unittest.TestCase):
+    """Xolthar más temible: las luces bajan y suben cuando la ve, su luz roja, música por cercanía y romper el piso."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    fresh = GameTests.fresh
+
+    def chase_scene(self, seed=0):
+        import random as _r
+        _r.seed(seed)
+        s = self.fresh(3)
+        b, bo, cv = s.bat, s.boss, s.cave
+        s.enemies = [bo]
+        b.carry = [p for p in s.pups if p.behavior == 'gemelas'][0]
+        bo.wake()
+        bo.waking = 0
+        b.x, b.y = cv.free_spot(NEST, 900)
+        return s
+
+    def test_lights_dip_and_come_back(self):
+        s = self.fresh(3)
+        self.assertEqual(s.light_dim(), 1.0)
+        s.light_dip()
+        vals = []
+        for _ in range(130):
+            s._chase_intensity(1 / 60, False)
+            vals.append(s.light_dim())
+        self.assertLess(min(vals), .3)                                    # bajan mucho
+        self.assertEqual(vals[-1], 1.0)                                   # y vuelven a la normalidad
+        s.draw(pygame.display.get_surface())
+
+    def test_boss_red_light_only_when_awake(self):
+        s = self.fresh(3)
+        self.assertIsNone(s.boss_light())                                 # dormido: sin luz roja
+        s.boss.wake()
+        s.boss.waking = 0
+        s.bat.x, s.bat.y = s.boss.x + 100, s.boss.y
+        s.camera.follow(s.bat.x, s.bat.y, 1, snap=True)
+        self.assertIsNotNone(s.boss_light())
+        s.draw(pygame.display.get_surface())
+
+    def test_chase_music_gets_louder_when_close(self):
+        s = self.chase_scene()
+        bo, b = s.boss, s.bat
+        s.sounds.music('chase', .55)
+        bo.x, bo.y = b.x + 900, b.y
+        for _ in range(120):
+            s._chase_intensity(1 / 60, True)
+        far = s.chase_k
+        bo.x, bo.y = b.x + 150, b.y
+        for _ in range(120):
+            s._chase_intensity(1 / 60, True)
+        self.assertGreater(s.chase_k, far + .5)
+
+    def test_breaks_floor_and_comes_out_behind_mullo(self):
+        s = self.chase_scene(0)
+        bo, b = s.boss, s.bat
+        phases, out = [], None
+        for _ in range(60 * 8):
+            b.vx, b.vy = 120, 0                                           # Mullo vuela hacia la derecha
+            s._enemies(1 / 60)
+            bw = bo.burrow
+            if bw and (not phases or phases[-1] != bw['phase']):
+                phases.append(bw['phase'])
+                if bw['phase'] in ('under', 'warn'):
+                    self.assertTrue(bo.underground)                       # bajo tierra no se le puede tocar
+            if bw and bw['phase'] == 'emerge' and out is None:
+                out = (bo.x, bo.y)
+            if out and bo.burrow is None:
+                break
+        self.assertEqual(phases, ['dive', 'under', 'warn', 'emerge'])
+        self.assertLess(out[0], b.x)                                      # sale DETRÁS de ella
+        self.assertTrue(180 < math.dist(out, (b.x, b.y)) < 380)
+        self.assertGreater(math.dist(out, NEST), SAFE_R + 200)            # nunca junto al nido
+        self.assertFalse(s.cave.blocked(int(out[0] // TILE), int(out[1] // TILE)))
+        self.assertGreater(len(s.burrow_fx.holes), 1)                     # deja agujeros en el piso
+        s.draw(pygame.display.get_surface())
+
+    def test_no_floor_breaking_near_the_nest(self):
+        s = self.chase_scene(0)
+        bo, b = s.boss, s.bat
+        b.x, b.y = NEST[0] + SAFE_R + 60, NEST[1]
+        bo.x, bo.y = b.x + 800, b.y
+        bo.far_t = 99
+        bo._check_burrow(1 / 60, s)
+        self.assertIsNone(bo.burrow)
+
+
+class MenuButtonsTests(unittest.TestCase):
+    """Botones: Salir y botones de la pausa (todos con el mismo estilo)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    def test_title_has_quit_and_no_test_button(self):
+        from scenes.title import TitleScene
+        t = TitleScene(self.game)
+        self.assertIn('Salir', t.menu.items)
+        self.assertNotIn('Nivel 3', t.menu.items)                        # el acceso de prueba ya se quitó
+        t.draw(pygame.display.get_surface())
+
+    def test_quit_button_closes_the_game(self):
+        from scenes.title import TitleScene
+        g = Game()
+        t = TitleScene(g)
+        t.menu.sel = t.actions.index('quit')
+        t.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+        self.assertFalse(g.running)
+
+    def test_pause_buttons(self):
+        g = Game()
+        s = PlayScene(g, 1)
+        s.state = 'pause'
+        s.draw(pygame.display.get_surface())
+        r = s.pause_buttons.rects[0]                                      # clic en «Continuar»
+        s.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=r.center))
+        self.assertEqual(s.state, 'play')
+        s.state = 'pause'
+        r = s.pause_buttons.rects[s.pause_actions.index('quit')]          # clic en «Salir del juego»
+        s.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=r.center))
+        self.assertFalse(g.running)
+
+    def test_one_button_style_everywhere(self):
+        scr = pygame.Surface((W, H))
+        for style in ui.BTN_STYLES:
+            for on in (True, False):
+                ui.draw_button(scr, pygame.Rect(100, 100, 180, 46), 'Prueba', on, 1.0, style, tag='PRUEBA')
+
+
+class XoltharNoiseWakeTests(unittest.TestCase):
+    """Tres gritos cerca de Xolthar dormido lo despiertan furioso y ya no deja de seguir a Mullo.
+    Si despierta porque Mullo toma a las gemelas, se calma cuando ella llega al nido (como siempre)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.game = Game()
+
+    fresh = GameTests.fresh
+
+    def near_boss(self, s):
+        bo = s.boss
+        s.bat.x, s.bat.y = bo.x + 200, bo.y
+        s.bat.carry = None
+        return bo
+
+    def scream(self, s):
+        s.cd = 0
+        s.screech()
+
+    def test_two_screams_only_stir_third_wakes(self):
+        s = self.fresh(3)
+        bo = self.near_boss(s)
+        self.scream(s)
+        self.scream(s)
+        self.assertEqual(bo.state, 'sleep')                               # dos: solo se remueve
+        self.assertGreater(bo.stir, 0)
+        self.scream(s)
+        self.assertEqual(bo.state, 'chase')                               # tres: despierta
+        self.assertTrue(bo.angry)
+        self.assertEqual(s.banner[0], '¡Lo despertaste!')
+
+    def test_far_screams_dont_count(self):
+        s = self.fresh(3)
+        bo = s.boss
+        s.bat.x, s.bat.y = bo.x + 1500, bo.y
+        for _ in range(4):
+            self.scream(s)
+        self.assertEqual(bo.state, 'sleep')
+
+    def test_angry_boss_keeps_following_even_at_the_nest(self):
+        s = self.fresh(3)
+        bo = self.near_boss(s)
+        for _ in range(3):
+            self.scream(s)
+        bo.waking = 0
+        s.bat.x, s.bat.y = NEST                                           # Mullo a salvo en el nido
+        for _ in range(120):
+            bo.update(1 / 60, s)
+        self.assertEqual(bo.state, 'chase')                               # no regresa a su guarida
+        self.assertGreaterEqual(math.dist((bo.x, bo.y), NEST), SAFE_R)    # pero al nido no entra
+
+    def test_twins_wake_still_calms_down_at_the_nest(self):
+        s = self.fresh(3)
+        bo = s.boss
+        self.assertTrue(bo.wake())                                        # despertó por las gemelas
+        bo.waking = 0
+        s.bat.carry = None
+        s.bat.x, s.bat.y = NEST
+        bo.update(1 / 60, s)
+        self.assertEqual(bo.state, 'return')                              # regresa a dormir
+        self.assertFalse(bo.angry)
+
+    def test_taking_twins_with_angry_boss_starts_the_escape(self):
+        s = self.fresh(3)
+        bo = self.near_boss(s)
+        for _ in range(3):
+            self.scream(s)
+        twins = [p for p in s.pups if p.behavior == 'gemelas'][0]
+        s.bat.x, s.bat.y = twins.x, twins.y
+        s._pups(1 / 60)
+        self.assertTrue(s.escape)
+        self.assertIn('follow_air', s.done_moments)                       # recuerda «sigue el aire»
+        self.assertTrue(bo.angry)
+
+
+class DesktopAppTests(unittest.TestCase):
+    """Aplicación de escritorio (.exe con PyInstaller)."""
+
+    def test_records_go_to_user_folder_when_frozen(self):
+        import tempfile
+        import scores as sc
+        old_frozen, old_appdata = getattr(sys, 'frozen', None), os.environ.get('APPDATA')
+        tmp = tempfile.mkdtemp()
+        try:
+            self.assertTrue(sc._records_path().endswith('records.json'))         # desde el código: junto al juego
+            self.assertEqual(os.path.dirname(sc._records_path()), os.path.dirname(os.path.abspath(sc.__file__)))
+            sys.frozen = True
+            os.environ['APPDATA'] = tmp
+            os.environ['XDG_DATA_HOME'] = tmp
+            path = sc._records_path()
+            self.assertTrue(path.startswith(tmp))                                # como .exe: carpeta del usuario
+            self.assertIn('BatlingRescue', path)
+            self.assertTrue(os.path.isdir(os.path.dirname(path)))
+        finally:
+            if old_frozen is None:
+                del sys.frozen
+            else:
+                sys.frozen = old_frozen
+            if old_appdata is None:
+                os.environ.pop('APPDATA', None)
+            else:
+                os.environ['APPDATA'] = old_appdata
+            os.environ.pop('XDG_DATA_HOME', None)
+
+    def test_build_script_includes_assets_and_icon(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('build_exe', os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), 'tools', 'build_exe.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        src = open(spec.origin, encoding='utf-8').read()
+        self.assertIn("'--add-data'", src)
+        self.assertIn("'--windowed'", src)
+        self.assertIn("'--onefile'", src)
+        self.assertEqual(mod.NAME, 'BatlingRescue')
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebZoomTests(unittest.TestCase):
+    """En el navegador el mundo se dibuja más chico y se amplía (todo se ve más grande y va más fluido)."""
+
+    def test_zoom_only_in_browser(self):
+        import settings
+        if os.environ.get('BATLING_ZOOM'):
+            self.skipTest('zoom forzado')
+        self.assertEqual(settings.ZOOM, 1.0)                 # en la computadora todo queda igual
+        self.assertEqual((settings.VIEW_W, settings.VIEW_H), (settings.W, settings.H))
+
+    def test_camera_with_zoom_maps_mouse_and_screen(self):
+        cam = Camera(1500, 1000, vw=720, vh=480, zoom=4 / 3)
+        wx, wy = cam.to_world(480, 320)                      # el centro de la pantalla
+        self.assertAlmostEqual(wx, cam.x + 360, delta=1)
+        self.assertAlmostEqual(wy, cam.y + 240, delta=1)
+        sx, sy = cam.to_screen(wx, wy)
+        self.assertAlmostEqual(sx, 480, delta=2)
+        self.assertTrue(cam.visible(cam.x + 700, cam.y + 470, 0))
+        self.assertFalse(cam.visible(cam.x + 900, cam.y + 100, 0))
+
+    def test_lighting_matches_view_size(self):
+        from lighting import Lighting
+        li = Lighting([], [], 'fungi', [], size=(720, 480))
+        self.assertEqual(li.up.get_size(), (720, 480))
+        self.assertEqual(li.vig.get_size(), li.small.get_size())
+
+    def test_web_audio_buffer_is_bigger(self):
+        import inspect
+        import sound
+        self.assertIn('2048 if IS_WEB', inspect.getsource(sound.init_mixer))
+
+    def test_baked_static_lights_match_one_by_one(self):
+        import random as rnd
+        from scenes.play import PlayScene
+        from game import Game
+        g = Game()
+        rnd.seed(1)
+        s = PlayScene(g, 1)
+        s.banner = None
+        outs = []
+        for bake in (False, True):
+            s.light.bake, s.light._bake_key = bake, None
+            c = pygame.Surface(s.canvas.get_size())
+            c.fill((90, 90, 90))
+            s.light.apply(c, s, 1.0)
+            outs.append(pygame.image.tobytes(c, 'RGB'))
+        diff = sum(a != b for a, b in zip(*outs)) / len(outs[0])
+        self.assertLess(diff, .01)                           # (solo redondeos de medio píxel)
+
+    def test_bat_sprite_cache_draws_the_same_bat(self):
+        a, b = pygame.Surface((200, 200)), pygame.Surface((200, 200))
+        a.fill((30, 30, 30))
+        b.fill((30, 30, 30))
+        old = ui.BAT_CACHE
+        try:
+            ui.BAT_CACHE = False
+            ui.draw_bat(a, 100, 100, 0.0, 1.0)
+            ui.BAT_CACHE = True
+            ui.draw_bat(b, 100, 100, 0.0, 1.0)
+            ui.draw_bat(b, 100, 100, 0.0, 1.0)                # (la segunda vez ya sale del caché)
+        finally:
+            ui.BAT_CACHE = old
+        same = sum(x == y for x, y in zip(pygame.image.tobytes(a, 'RGB'), pygame.image.tobytes(b, 'RGB')))
+        self.assertGreater(same / (200 * 200 * 3), .995)

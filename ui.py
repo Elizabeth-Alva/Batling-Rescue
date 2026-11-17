@@ -118,9 +118,40 @@ def mini_heart(s, x, y, r, col):
     pygame.draw.polygon(s, col, [(x - r * 1.05, y + r * .15), (x + r * 1.05, y + r * .15), (x, y + r * 1.2)])
 
 
+BAT_CACHE = IS_WEB or bool(os.environ.get('BATLING_BATCACHE'))   # navegador: los murciélagos se reutilizan ya dibujados
+_BAT_SPR = {}
+
+
 def draw_bat(s, x, y, flap, sc=1.0, col=(40, 30, 60), body=(55, 42, 80), edge=(95, 75, 130), eye=(255, 220, 90),
              bones=None, ear_in=None, glint=False, fold=0.0, mood='open', look=0.0, yawn=0.0, blush=None, wing=1.0, slim=1.0,
              ear=None):
+    """En el navegador cada pose (aleteo en 25 pasos) se dibuja una sola vez y luego solo se copia: dibujar los
+    polígonos de las alas cada cuadro era de lo más lento en la portada y las cinemáticas."""
+    if not BAT_CACHE:
+        return _draw_bat(s, x, y, flap, sc, col, body, edge, eye, bones, ear_in, glint, fold, mood, look, yawn, blush,
+                         wing, slim, ear)
+    fq = round(fold * 10) / 10
+    amp = 1 - .7 * fq
+    wq = round(math.sin(flap) * amp * 12)                             # la altura del ala: lo único que cambia al aletear
+    key = (wq, round(sc, 2), col, body, edge, eye, bones, ear_in, glint, fq, mood, round(look, 1), round(yawn, 1),
+           blush, round(wing, 2), round(slim, 2), ear)
+    spr = _BAT_SPR.get(key)
+    if spr is None:
+        if len(_BAT_SPR) > 1500:                                      # (nunca crece sin límite)
+            _BAT_SPR.clear()
+        ox, oy = int(50 * sc) + 8, int(42 * sc) + 8
+        img = pygame.Surface((2 * ox, oy + int(32 * sc) + 8), pygame.SRCALPHA)
+        fl = math.asin(max(-1.0, min(1.0, wq / 12 / amp))) if amp > 0 else 0.0
+        _draw_bat(img, ox, oy, fl, sc, col, body, edge, eye, bones, ear_in, glint, fq, mood, round(look, 1),
+                  round(yawn, 1), blush, wing, slim, ear)
+        spr = _BAT_SPR[key] = (img, ox, oy)
+    img, ox, oy = spr
+    s.blit(img, (int(x) - ox, int(y) - oy))
+
+
+def _draw_bat(s, x, y, flap, sc=1.0, col=(40, 30, 60), body=(55, 42, 80), edge=(95, 75, 130), eye=(255, 220, 90),
+              bones=None, ear_in=None, glint=False, fold=0.0, mood='open', look=0.0, yawn=0.0, blush=None, wing=1.0, slim=1.0,
+              ear=None):
     """Murciélago visto desde arriba: dos alas de seis puntos (con el borde festoneado entre los dedos), cuerpo
     elíptico con pancita, cabeza redonda, dos orejas triangulares y dos ojos.
     bones: dedos marcados · ear_in: interior de las orejas · glint: brillo en los ojos ·
@@ -240,12 +271,26 @@ def draw_mullo(s, x, y, flap, sc=1.0, glow=True, **pose):
         mullo_eye_glow(s, x, y, sc, **pose)
 
 
+_SCRATCH = {}
+
+
+def _scratch(w, h, slot=0):
+    """Capa transparente reutilizable (se limpia en vez de crear una nueva en cada cuadro: menos tirones)."""
+    key = (w, h, slot)
+    surf = _SCRATCH.get(key)
+    if surf is None:
+        surf = _SCRATCH[key] = pygame.Surface((w, h), pygame.SRCALPHA)
+    else:
+        surf.fill((0, 0, 0, 0))
+    return surf
+
+
 def draw_bat_tilted(s, x, y, flap, tilt, sc=1.0, **pose):
     """Mullo inclinada (en radianes) según hacia dónde gira; pose: fold, mood, look, yawn (animaciones tiernas)."""
     SS = SUPERSAMPLE                                                   # al doble y suavizado (bordes lisos); 1 en el navegador
     if SS == 1 and abs(tilt) < .02:
         return draw_mullo(s, x, y, flap, sc, **pose)
-    big = pygame.Surface((130 * SS, 100 * SS), pygame.SRCALPHA)
+    big = _scratch(130 * SS, 100 * SS)
     draw_mullo(big, 65 * SS, 50 * SS, flap, sc * SS, glow=False, **pose)
     _tilted_blit(s, big, x, y, tilt, SS)
     mullo_eye_glow(s, x, y, sc, tilt, **pose)                          # el brillo va encima, ya inclinado
@@ -460,13 +505,13 @@ def draw_pup(s, x, y, flap, lean=0.0, sc=.55, name=None, t=0.0, cry=False, scare
         return _pup_body(s, x, y, flap, sc, lk, t, cry, scared)
     bw, bh = int(118 * sc) + 16, int(96 * sc) + 16
     cx, cy = bw // 2, int(bh * .56)
-    big = pygame.Surface((bw * SS, bh * SS), pygame.SRCALPHA)
+    big = _scratch(bw * SS, bh * SS)
     _pup_body(big, cx * SS, cy * SS, flap, sc * SS, lk, t, cry, scared)
     tmp = pygame.transform.smoothscale(big, (bw, bh)) if SS > 1 else big
     if abs(lean) < .03:
         s.blit(tmp, (int(x) - cx, int(y) - cy))
         return
-    big2 = pygame.Surface((bw, bw), pygame.SRCALPHA)                  # centrado para girar sobre su cuerpo
+    big2 = _scratch(bw, bw, 1)                                        # centrado para girar sobre su cuerpo
     big2.blit(tmp, (0, bw // 2 - cy))
     rot = pygame.transform.rotate(big2, -math.degrees(lean))
     s.blit(rot, rot.get_rect(center=(int(x), int(y))))
@@ -592,8 +637,19 @@ def draw_centipede(s, e, cam, boss=False):
     pygame.draw.polygon(s, (78, 30, 18), head)
     pygame.draw.polygon(s, edge, head, 2)
     snap = .2 + .25 * (.5 + .5 * math.sin(t * 12))
+    idle = getattr(e, 'idle', 0.0)
+    groom = min(1.0, max(0.0, (idle - .5) / .3)) if not boss else 0.0      # quieto: se acicala las pinzas
     for sd in (-1, 1):                                                       # pinzas al frente
-        claw = [H(hr * .6, sd * hr * .45), H(hr * 1.35, sd * hr * (.75 + snap)), H(hr * 1.8, sd * hr * (.2 + snap * .3))]
+        if groom:
+            rub = math.sin(idle * 13 + (sd > 0) * math.pi)                  # se frotan una contra otra, por turnos
+            mid = .75 + snap
+            mid += (-.55 - .25 * rub - mid) * groom
+            tip = .2 + snap * .3
+            tip += (-.15 * rub - tip) * groom
+            reach = 1.8 - .25 * groom * (.5 + .5 * rub)
+            claw = [H(hr * .6, sd * hr * .45), H(hr * 1.35, sd * hr * mid), H(hr * reach, sd * hr * tip)]
+        else:
+            claw = [H(hr * .6, sd * hr * .45), H(hr * 1.35, sd * hr * (.75 + snap)), H(hr * 1.8, sd * hr * (.2 + snap * .3))]
         pygame.draw.lines(s, (40, 14, 8), False, claw, 4)
         pygame.draw.lines(s, edge, False, claw, 2)
         ex, ey = H(hr * .35, sd * hr * .42)                                 # ojos rojos
@@ -624,13 +680,22 @@ def draw_boss(s, e, cam):
     pulse = .5 + .5 * math.sin(t * (7 if awake else 1.5))
     breathe = 1 + (.04 * math.sin(t * 2) + .05 * min(1, stir) if not awake else 0)
     n = len(segs)
+    bw = getattr(e, 'burrow', None)
+    if bw is not None and bw['phase'] in ('under', 'warn'):                  # bajo tierra: no se ve
+        return
+    hole = e.hidden_from() if bw is not None else None
+    under = [hole is not None and abs(p[0] - hole[0]) < 10 and abs(p[1] - hole[1]) < 10 for p in segs]
+    head_under = hole is not None and abs(e.x - hole[0]) < 10 and abs(e.y - hole[1]) < 10 and (
+        bw['phase'] == 'dive' or bw['t'] < .08)
     pts = [cam.apply(*p) for p in segs]
     pts = [(x + jx, y) for x, y in pts]
-    if awake:                                                                 # aura roja al despertar
+    if awake and not head_under:                                              # aura roja al despertar
         gl = _boss_glow(150)
         hx, hy = pts[0]
         s.blit(gl, (hx - 150, hy - 150), special_flags=pygame.BLEND_RGB_ADD)
     for i in range(n - 1, -1, -1):
+        if under[i]:                                                          # este segmento está bajo tierra
+            continue
         sx, sy = pts[i]
         ox, oy = pts[i + 1] if i + 1 < n else (2 * sx - pts[i - 1][0], 2 * sy - pts[i - 1][1])
         ang = math.atan2(sy - oy, sx - ox)
@@ -657,6 +722,8 @@ def draw_boss(s, e, cam):
         pygame.draw.polygon(s, seam, plate, 2)
         pygame.draw.line(s, seam, P(-r * .3, -r * .7), P(-r * .3, r * .7), 2)                  # veta brillante
         pygame.draw.line(s, (70, 30, 30), P(r * .1, -r * .8), P(r * .45, -r * .2), 2)           # brillo de la coraza
+    if head_under:
+        return
     hx, hy = pts[0]
     a = e.face
     ca, sa = math.cos(a), math.sin(a)
@@ -696,9 +763,39 @@ def draw_boss(s, e, cam):
         text(s, F_XS, 'z', hx + 46 + ph * 5, hy - 52 - ph * 8, (160, 120, 110))
 
 
+def draw_beetle_flipped(s, x, y, t, face, size=1.1, flip=1.0):
+    """Escarabajo aturdido: se voltea patas arriba y patalea hasta enderezarse. Se le ve la panza (más clara y
+    con anillos) y las seis patas moviéndose rápido en el aire. flip (0-1): qué tanto se volteó (al caer da un saltito)."""
+    k = size
+    hop = math.sin(math.pi * min(1.0, flip)) * 5 if flip < 1 else 0.0
+    y -= hop
+    P = _rot(x, y, face, k)
+    leg = (20, 26, 32)
+    pygame.draw.ellipse(s, (8, 10, 14), pygame.Rect(x - 13 * k, y + hop - 7 * k + 4, 26 * k, 16 * k))   # sombra en el suelo
+    for sd in (-1, 1):                                                       # patas al aire, pataleando rápido
+        for i, lx in enumerate((-5, 2, 8)):
+            w = math.sin(t * 26 + i * 1.9 + (sd > 0) * 1.3)
+            pts = [P(lx, sd * 6), P(lx + w * 3, sd * (11 + 2 * w)), P(lx + w * 5 + 2, sd * (14 + 3 * abs(w)))]
+            pygame.draw.lines(s, leg, False, pts, 3)
+            pygame.draw.lines(s, (60, 84, 92), False, pts[1:], 1)
+    aw = math.sin(t * 19) * 3
+    for sd in (-1, 1):                                                       # antenas que se agitan
+        pygame.draw.lines(s, leg, False, [P(13, sd * 2), P(18, sd * (5 + aw * sd * .4)), P(22, sd * (4 + aw * sd))], 2)
+    belly = [P(12, 0), P(10, -7), P(3, -10), P(-6, -10), P(-12, -7), P(-14, 0), P(-12, 7), P(-6, 10), P(3, 10), P(10, 7)]
+    pygame.draw.polygon(s, (34, 56, 62), belly)                              # panza (más clara que el caparazón)
+    for j in range(4):                                                       # anillos de la panza
+        u = -9 + j * 5
+        pygame.draw.line(s, (22, 38, 44), P(u, -7 + abs(j - 1.5)), P(u, 7 - abs(j - 1.5)), 1)
+    pygame.draw.polygon(s, (110, 180, 196), belly, 1)
+    pygame.draw.circle(s, (16, 30, 36), [int(v) for v in P(13, 0)], int(3.5 * k))   # cabecita
+
+
 def draw_enemy(s, x, y, e, cam=None):
     if e.kind == 'beetle':
-        draw_beetle(s, x, y, e.anim, e.face, e.spec['size'])
+        if e.stun > 0:
+            draw_beetle_flipped(s, x, y, e.anim, e.face, e.spec['size'], min(1.0, getattr(e, 'flip_t', 1.0) / .25))
+        else:
+            draw_beetle(s, x, y, e.anim, e.face, e.spec['size'])
     elif e.kind == 'boss':
         draw_boss(s, e, cam)
     elif e.kind == 'hunter':
@@ -716,9 +813,101 @@ def arrow(s, cx, cy, ang, col, sz=11):
 
 
 # ---------------------------------------------------------------- menú
+# ---------------------------------------------------------------- botones (un solo estilo en todo el juego)
+# Mismo lenguaje que los paneles del HUD: vidrio oscuro de cueva con borde fino. Al elegirlo se enciende el borde
+# con el color de acento, se tiñe un poco por dentro y Mullo aletea junto al texto. Los acentos salen del juego:
+# lila (Mullo), dorado (el nido y los récords) y rojo (Xolthar y la derrota).
+BTN_STYLES = {
+    'primary': dict(accent=(200, 160, 255), glow=(130, 90, 230), text=(246, 240, 255)),
+    'test': dict(accent=(255, 205, 120), glow=(220, 150, 60), text=(255, 244, 222)),
+    'danger': dict(accent=(240, 110, 120), glow=(210, 50, 70), text=(255, 236, 238)),
+}
+_BTN_CACHE = {}
+
+
+def _mix3(a, b, k):
+    return tuple(int(x + (y - x) * k) for x, y in zip(a, b))
+
+
+def _btn_layer(w, h, style, on):
+    """Cuerpo del botón (vidrio oscuro con un toque del acento, borde y sombra), hecho una vez por tamaño y estilo."""
+    key = ('body', w, h, style, on)
+    surf = _BTN_CACHE.get(key)
+    if surf is not None:
+        return surf
+    acc = BTN_STYLES[style]['accent']
+    pad = 10
+    surf = pygame.Surface((w + 2 * pad, h + 2 * pad), pygame.SRCALPHA)
+    r = min(12, h // 2)
+    pygame.draw.rect(surf, (0, 0, 0, 120), (pad + 1, pad + 4, w, h), border_radius=r)            # sombra
+    body = pygame.Surface((w, h), pygame.SRCALPHA)
+    top = _mix3((22, 15, 40), acc, .24 if on else .05)
+    bot = _mix3((8, 5, 18), acc, .1 if on else .02)
+    for y in range(h):
+        body.fill((*_mix3(top, bot, y / max(1, h - 1)), 236 if on else 210), (0, y, w, 1))
+    mask = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, w, h), border_radius=r)
+    body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    surf.blit(body, (pad, pad))
+    if on:
+        pygame.draw.rect(surf, (*acc, 255), (pad, pad, w, h), 2, border_radius=r)
+        pygame.draw.line(surf, (*acc, 70), (pad + r, pad + 3), (pad + w - r, pad + 3), 1)          # filo de luz arriba
+    else:
+        pygame.draw.rect(surf, (*_mix3((90, 76, 124), acc, .2), 230), (pad, pad, w, h), 1, border_radius=r)
+    _BTN_CACHE[key] = surf
+    return surf
+
+
+def _btn_glow(w, h, style):
+    key = ('glow', w, h, style)
+    g = _BTN_CACHE.get(key)
+    if g is None:
+        col = BTN_STYLES[style]['glow']
+        pad = 22
+        g = pygame.Surface((w + 2 * pad, h + 2 * pad))
+        for i in range(pad, 0, -2):
+            k = (1 - i / pad) ** 2 * .55
+            pygame.draw.rect(g, tuple(int(c * k) for c in col), (pad - i, pad - i, w + 2 * i, h + 2 * i),
+                             border_radius=min(16, h // 2) + i)
+        _BTN_CACHE[key] = g
+    return g
+
+
+def draw_button(s, rect, label, on, t=0.0, style='primary', font=None, tag=None):
+    """Botón del juego. on: seleccionado (con el teclado o el mouse): se ilumina, brilla, sube un poquito y
+    lleva a Mullo aleteando al lado del texto. tag: etiqueta chiquita en la esquina (p. ej. «PRUEBA»)."""
+    font = font or F_S
+    x, y, w, h = rect
+    lift = 2 if on else 0
+    if on:
+        pulse = .45 + .3 * math.sin(t * 4.5)
+        g = _btn_glow(w, h, style)
+        g.set_alpha(int(255 * pulse))
+        s.blit(g, (x - 22, y - 22 - lift), special_flags=pygame.BLEND_RGB_ADD)
+    s.blit(_btn_layer(w, h, style, on), (x - 10, y - 10 - lift))
+    st = BTN_STYLES[style]
+    col = st['text'] if on else _mix3((176, 164, 204), st['accent'], .15)
+    tw = font.size(label)[0]
+    cx, cy = x + w // 2, y + h // 2 - lift
+    if on and w - tw > 64:                                           # Mullo acompaña al botón elegido
+        draw_mullo(s, cx - tw // 2 - 20, cy + 1, t * 10, .28)
+        cx += 6
+    text(s, font, label, cx + 1, cy + 2, (10, 4, 20), True)          # sombra del texto
+    text(s, font, label, cx, cy, col, True)
+    if tag:
+        tf = F_XS
+        tw2 = tf.size(tag)[0] + 12
+        pill = pygame.Rect(x + w - tw2 + 4, y - 9 - lift, tw2, 18)
+        pygame.draw.rect(s, _mix3((10, 6, 20), st['accent'], .25), pill, border_radius=9)
+        pygame.draw.rect(s, st['accent'], pill, 1, border_radius=9)
+        text(s, tf, tag, pill.centerx, pill.centery, st['accent'], True)
+
+
 class Menu:
-    def __init__(self, items, cx, y0, gap=64, w=380, h=50, horizontal=False):
+    def __init__(self, items, cx, y0, gap=64, w=380, h=50, horizontal=False, styles=None, tags=None):
         self.items, self.sel, self.t = items, 0, 0.0
+        self.styles = styles or ['primary'] * len(items)
+        self.tags = tags or [None] * len(items)
         self.horizontal = horizontal
         if horizontal:
             x0 = cx - (len(items) * w + (len(items) - 1) * (gap - w)) // 2
@@ -754,20 +943,8 @@ class Menu:
     def draw(self, s, dt):
         self.t += dt
         for i, (label, r) in enumerate(zip(self.items, self.rects)):
-            on = i == self.sel
-            box = pygame.Surface(r.size, pygame.SRCALPHA)
-            pulse = .5 + .5 * math.sin(self.t * 5)
-            if on:
-                pygame.draw.rect(box, (110, 70, 190, 150 + int(40 * pulse)), box.get_rect(), border_radius=14)
-                pygame.draw.rect(box, (200, 160, 255, 255), box.get_rect(), 2, border_radius=14)
-            else:
-                pygame.draw.rect(box, (20, 14, 34, 150), box.get_rect(), border_radius=14)
-                pygame.draw.rect(box, (80, 64, 110, 200), box.get_rect(), 1, border_radius=14)
-            s.blit(box, r)
-            text(s, F_S if self.horizontal else F_M, label, r.centerx, r.centery, (255, 255, 255) if on else (170, 155, 195), True)
-            if on and not self.horizontal:
-                draw_mullo(s, r.left + 34, r.centery + 2, self.t * 9, .4)
-                draw_mullo(s, r.right - 34, r.centery + 2, self.t * 9 + 1, .4)
+            draw_button(s, r, label, i == self.sel, self.t, self.styles[i], F_S if self.horizontal else F_M,
+                        self.tags[i])
 
 
 # ---------------------------------------------------------------- fondo animado (título / instrucciones)

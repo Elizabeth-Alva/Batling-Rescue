@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BATling Rescue</string>
+    <string name="exit_title">¿Salir de BATling Rescue?</string>
+    <string name="exit_yes">Salir</string>
+    <string name="exit_no">Seguir jugando</string>
+</resources>

@@ -1,0 +1,26 @@
+BATLING RESCUE PARA ANDROID
+Una app que abre el juego (la versión web, la misma de GitHub Pages) a pantalla completa, en horizontal, sin barra
+del navegador y con su propio ícono. Los controles táctiles son los del juego (joystick y botones en pantalla).
+
+QUÉ NECESITAS
+  - Android Studio.
+  - Que la versión web esté publicada. La app abre:  https://elizabeth-alva.github.io/Batling-Rescue/
+    Si la página tiene otra dirección, cámbiala en dos lugares:
+      app/src/main/java/com/batling/rescue/MainActivity.java   (GAME_URL)
+      app/src/main/assets/offline.html                         (botón Reintentar)
+
+CÓMO HACER EL APK
+  1. Android Studio -> File -> Open -> elige esta carpeta (android). Espera a que termine "Gradle sync"
+     (la primera vez descarga Gradle y el SDK; si te ofrece actualizar el Android Gradle Plugin, puedes aceptar).
+  2. Build -> Build App Bundle(s) / APK(s) -> Build APK(s).
+  3. El APK queda en:  app/build/outputs/apk/debug/app-debug.apk   (Android Studio muestra "locate").
+  4. Pásalo al celular y ábrelo. Android pedirá permitir "instalar apps de origen desconocido" la primera vez.
+  También puedes conectar el celular por USB (con depuración USB) y darle Run (triángulo verde).
+
+NOTAS
+  - Necesita internet para cargar el juego (pygbag descarga Python al abrir). Sin conexión muestra una pantalla
+    para reintentar.
+  - Los récords se guardan en el celular (localStorage de la app).
+  - Botón atrás del teléfono: pregunta si quieres salir.
+  - Si sales de la app, el juego se detiene; al volver sigue donde estaba.
+  - Para subirlo a Google Play hace falta firmarlo: Build -> Generate Signed App Bundle / APK.

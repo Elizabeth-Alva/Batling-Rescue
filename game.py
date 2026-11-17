@@ -1,6 +1,7 @@
 """Bucle principal y gestor de escenas con fundido entre ellas."""
 import asyncio
 import time
+from collections import deque
 
 import pygame
 
@@ -18,9 +19,32 @@ def _web_log(msg):
         print(msg)
 
 
+def _smooth_dt(hist, raw, cap):
+    """Paso de tiempo suavizado: el reloj del sistema da cuadros de 15, 17, 16, 18 ms... y ese vaivén se nota como
+    tirones al mover la cámara. Se usa el promedio de los últimos cuadros (y un tope para cuando la ventana se
+    congela un momento), así todo avanza parejo sin cambiar la velocidad del juego."""
+    raw = min(raw, cap)
+    if hist and raw > 2.5 * (sum(hist) / len(hist)):    # un cuadro muy lento (p. ej. al cargar): no contamina el promedio
+        return raw
+    hist.append(raw)
+    return sum(hist) / len(hist)
+
+
 class Game:
+    @staticmethod
+    def _open_window():
+        """En la computadora pide sincronía vertical (vsync): cada cuadro sale justo cuando el monitor se refresca,
+        sin cortes a media pantalla. Si la tarjeta de video no la acepta, abre la ventana normal."""
+        if not IS_WEB:
+            try:
+                screen = pygame.display.set_mode((W, H), pygame.SCALED, vsync=1)
+                return screen, bool(getattr(pygame.display, 'is_vsync', lambda: True)())
+            except pygame.error:
+                pass
+        return pygame.display.set_mode((W, H)), False
+
     def __init__(self):
-        self.screen = pygame.display.set_mode((W, H))
+        self.screen, self.vsync = self._open_window()
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         ui.init_fonts()
@@ -85,6 +109,11 @@ class Game:
         self.progress['decided'] = level >= 3            # en el acto III Mullo ya usa el grito a propósito
         self.progress['rescued'] = rescued_before(level)
         self._goto_step()
+
+    def quit(self):
+        """Botón «Salir»: cierra el juego (en el navegador no se puede cerrar la pestaña)."""
+        if not IS_WEB:
+            self.running = False
 
     def retry_level(self, level):
         self.goto('play', level=level)
@@ -184,8 +213,10 @@ class Game:
 
     async def run(self):
         frames, t_upd, t_drw, t_log = 0, 0.0, 0.0, time.perf_counter()
+        hist = deque(maxlen=8)
+        cap_fps = 165 if self.vsync else FPS             # con vsync manda el monitor (60, 75, 144 Hz...); tope por seguridad
         while self.running:
-            dt = min(self.clock.tick(FPS) / 1000, .1 if IS_WEB else .05)
+            dt = _smooth_dt(hist, self.clock.tick(cap_fps) / 1000, .1 if IS_WEB else .05)
             now = time.perf_counter()
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:

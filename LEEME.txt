@@ -6,9 +6,30 @@ COMO JUGAR
   Manual:  pip install pygame   y luego   python main.py
   Requiere Python 3.8 o superior (python.org; marca "Add Python to PATH" al instalar).
 
+APLICACIÓN DE ESCRITORIO (.exe, sin instalar Python)
+  Para convertir el juego en un solo archivo que se abre con doble clic:
+  1. Doble clic en CONSTRUIR_EXE.bat (o:  python tools/build_exe.py ). Tarda un par de minutos la primera vez:
+     instala PyInstaller y Pillow, hace el ícono con el logo y empaqueta el juego con la carpeta assets/.
+  2. Al terminar se abre la carpeta dist/ con BatlingRescue.exe (unos 40 MB). Ese archivo es todo lo que se
+     necesita para jugar o compartirlo: no pide instalar Python ni pygame.
+  - El .exe se construye en Windows (en Linux o Mac el mismo script hace la aplicación para ese sistema).
+  - Los récords del .exe se guardan en  %APPDATA%\BatlingRescue\records.json  (jugando con JUGAR.bat siguen
+    en records.json junto al juego).
+  - Windows puede mostrar "Windows protegió su PC" la primera vez (el .exe no está firmado):
+    "Más información" -> "Ejecutar de todas formas".
+  - Las carpetas build/ y dist/ no se suben a GitHub (están en .gitignore).
+
+APP PARA ANDROID (APK)
+  En la carpeta android/ hay un proyecto de Android Studio: una app que abre la versión web del juego a pantalla
+  completa, en horizontal y con su propio ícono. Abre esa carpeta en Android Studio y usa
+  Build -> Build App Bundle(s) / APK(s) -> Build APK(s). Pasos y notas en android/LEEME_ANDROID.txt.
+  Necesita internet (carga el juego desde GitHub Pages).
+
 MENU
   Jugar .............. prólogo, 3 actos con sus cinemáticas y el final.
+  Instrucciones ...... controles y qué hace cada habilidad.
   Récords ............ los 10 mejores tiempos por completar los 3 niveles.
+  Salir .............. cierra el juego (no aparece en la versión del navegador).
 
 RÉCORDS DE TIEMPO (para competir)
   - El récord es por completar la historia: el tiempo total de los 3 niveles. No pide nombre: se guarda solo,

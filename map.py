@@ -2,11 +2,12 @@
 
 Cada noche "el agua y las raíces mueven los túneles", así que la cueva se genera al azar en cada partida.
 Nivel 1: Galerías de los Hongos (hongos luminosos, telarañas, rastros de las crías).
-Nivel 2: Lago Negro (agua quieta, islotes, niebla; la Sala del Eco en la isla central).
+Nivel 2: Lago Negro (agua quieta, islotes y algas; la Sala del Eco en la isla central).
 Nivel 3: Mina Vieja (vigas, rieles, vagonetas, lámparas apagadas y una corriente de aire hacia la salida).
 """
 import math
 import random
+from array import array
 from collections import deque
 
 import pygame
@@ -81,6 +82,7 @@ class CaveMap:
             self._make_trails(1.0 if self.theme_name == 'fungi' else .28)
         self.current = bytearray(self.w * self.h)          # corriente de aire de la mina (zona que guía la huida)
         self.molt = None                                    # piel vieja de Xolthar en la entrada de la mina
+        self.molt_clean = None
         if self.theme_name == 'mine':
             self._make_mine()
             self._make_current()
@@ -573,7 +575,7 @@ class CaveMap:
             for side in (1, -1):
                 x = self.rails[k][0] - math.sin(ang) * 46 * side
                 y = self.rails[k][1] + math.cos(ang) * 46 * side
-                if math.dist((x, y), NEST) > SAFE_R + 60 and all(not self.solid_px(x + math.cos(ang) * d, y + math.sin(ang) * d)
+                if math.dist((x, y), NEST) > SAFE_R + 160 and all(not self.solid_px(x + math.cos(ang) * d, y + math.sin(ang) * d)
                                                                   for d in (-80, -40, 0, 40, 80)):
                     self.molt = (x, y, ang)
                     return
@@ -607,12 +609,14 @@ class CaveMap:
             return True
         ux, uy = dx / d, dy / d
         steps = int(d // 10) + 1
-        blk = self.blocked if walk else self.solid
+        bm, w, h = self._blockmap(walk), self.w, self.h             # mapa plano: mucho más rápido que llamar funciones
+        ax, ay = a
         for off in (0, 9, -9):
-            ox, oy = -uy * off, ux * off
+            ox, oy = ax - uy * off, ay + ux * off
             for i in range(steps + 1):
                 f = min(d, i * 10)
-                if blk(int((a[0] + ux * f + ox) // T), int((a[1] + uy * f + oy) // T)):
+                tx, ty = int((ox + ux * f) // T), int((oy + uy * f) // T)
+                if tx < 0 or ty < 0 or tx >= w or ty >= h or bm[ty * w + tx]:
                     return False
         return True
 
@@ -633,8 +637,34 @@ class CaveMap:
             self._bm = cache = (key, bm)
         return cache[1]
 
+    def _components(self, walk):
+        """Zonas conectadas del mapa de bloqueo (se recalcula con él). Si origen y destino están en zonas distintas
+        no hay ruta: se sabe al instante, sin recorrer toda la cueva (eso era lo que trababa algunos cuadros)."""
+        bm = self._blockmap(walk)
+        cache = getattr(self, '_comp_cache', None)
+        if cache is None or cache[0] is not bm:
+            w, n = self.w, len(bm)
+            lab = array('i', bytes(4 * n))
+            k = 0
+            for i in range(n):
+                if bm[i] or lab[i]:
+                    continue
+                k += 1
+                lab[i] = k
+                dq = deque([i])
+                while dq:
+                    cur = dq.popleft()
+                    for nb in (cur + 1, cur - 1, cur + w, cur - w):
+                        if not bm[nb] and not lab[nb]:
+                            lab[nb] = k
+                            dq.append(nb)
+            self._comp_cache = cache = (bm, lab)
+        return cache[1]
+
     def path(self, a, b, limit=7000, walk=True):
-        """BFS 4-conectado entre posiciones en píxeles -> lista de centros de tile (sin el origen)."""
+        """BFS 4-conectado entre posiciones en píxeles -> lista de centros de tile (sin el origen).
+        Usa arreglos reutilizados (sin crear diccionarios en cada búsqueda) y descarta al instante los destinos
+        que están en otra zona sin conexión."""
         w = self.w
         sx, sy = int(a[0] // T), int(a[1] // T)
         tx, ty = int(b[0] // T), int(b[1] // T)
@@ -646,18 +676,29 @@ class CaveMap:
             return None
         if s == t:
             return [b]
-        prev = {s: -1}
-        dq, n = deque([s]), 0
+        lab = self._components(walk)
+        if lab[s] != lab[t]:
+            return None
+        n_cells = len(bm)
+        ps = getattr(self, '_path_buf', None)
+        if ps is None or len(ps[0]) != n_cells:
+            ps = self._path_buf = [array('i', bytes(4 * n_cells)), array('i', bytes(4 * n_cells)), 0]
+        prev, stamp = ps[0], ps[1]
+        gen = ps[2] = ps[2] + 1
+        stamp[s], prev[s] = gen, -1
+        dq, n, found = deque([s]), 0, False
+        pop, push = dq.popleft, dq.append
         while dq and n < limit:
-            cur = dq.popleft()
+            cur = pop()
             n += 1
             if cur == t:
+                found = True
                 break
             for nb in (cur + 1, cur - 1, cur + w, cur - w):
-                if not bm[nb] and nb not in prev:
-                    prev[nb] = cur
-                    dq.append(nb)
-        if t not in prev:
+                if not bm[nb] and stamp[nb] != gen:
+                    stamp[nb], prev[nb] = gen, cur
+                    push(nb)
+        if not found and stamp[t] != gen:
             return None
         out, cur = [], t
         while cur != s:
@@ -880,6 +921,7 @@ class CaveMap:
         if self.secret:
             self._draw_secret(bg)
         pygame.draw.rect(bg, (10, 8, 12), (0, 0, WORLD_W, WORLD_H), 14)
+        self._draw_animated(bg)
         return bg
 
     def _decorate(self, bg, th, solid):
@@ -921,6 +963,7 @@ class CaveMap:
                                 if rnd() < .22:
                                     decor.shell(bg, cx_ + R.uniform(-8, 8) * (1 - abs(i)), cy_ + R.uniform(-8, 8) * (1 - abs(j)), R)
         self._dry_flats(bg, th)
+        webs = []
         for ty in range(1, self.h - 1):
             for tx in range(1, self.w - 1):
                 if g[ty][tx] or self.water[ty * w + tx] or math.dist((tx, ty), NEST_T) < 5:
@@ -948,8 +991,9 @@ class CaveMap:
                     side = -1 if g[ty][tx - 1] else 1
                     cx, cy = x0 + (0 if side < 0 else T), y0
                     col = (190, 205, 205) if self.theme_name != 'mine' else (170, 150, 128)
-                    decor.cobweb(bg, cx, cy, side, col, ri(20, 32))
+                    webs.append((cx, cy, side, col, ri(20, 32)))
                     self.cobwebs.append((cx, cy))
+        self._pending_webs = webs                           # se pintan al final de todo (ver _draw_animated)
 
     def _place_props(self):
         """Dónde van los objetos interactivos: cortinas de raíces secas (pasajes), piedras flotantes (lago)
@@ -1062,6 +1106,26 @@ class CaveMap:
     def _trail_mark(bg, x, y, kind, ang):
         decor.trail_mark(bg, x, y, kind, ang)
 
+    def _draw_animated(self, bg):
+        """Telarañas y piel vieja de Xolthar: se pintan AL FINAL, cuando el fondo ya tiene todo lo demás (nido,
+        rieles, grieta del techo, sala secreta). Antes de pintar cada una se guarda el pedacito de fondo que tapa:
+        en el juego se usa para repintarlas mientras se mecen sin borrar nada de lo que está debajo."""
+        area = bg.get_rect()
+        self.cobweb_info = []
+        for cx, cy, side, col, r in getattr(self, '_pending_webs', ()):
+            rect = pygame.Rect(cx - r - 2, cy - r - 2, 2 * r + 4, 2 * r + 4).clip(area)
+            clean = bg.subsurface(rect).copy() if rect.w > 0 and rect.h > 0 else None
+            decor.cobweb(bg, cx, cy, side, col, r)
+            self.cobweb_info.append(dict(x=cx, y=cy, side=side, col=col, r=r, rect=rect, clean=clean))
+        self._pending_webs = []
+        if self.molt:
+            from art import molt_surface
+            x, y, ang = self.molt
+            img = molt_surface(ang, 170, 150)
+            rect = img.get_rect(center=(int(x), int(y))).inflate(16, 16).clip(area)
+            self.molt_clean = (rect, bg.subsurface(rect).copy())
+            bg.blit(img, img.get_rect(center=(int(x), int(y))))
+
     def _draw_mine(self, bg):
         decor.rails(bg, self.rails)
         for seg in self.beams:                                       # vigas de madera
@@ -1071,10 +1135,7 @@ class CaveMap:
         for x, y, ang, lair in self.carts:
             if lair != 'rail':                                       # las sueltas se dibujan en el juego (ruedan)
                 draw_cart(bg, x, y, ang, 1.25 if lair else 1.0)
-        if self.molt:                                                # la piel vieja de Xolthar (quieta, pálida y vacía)
-            from art import draw_molt
-            x, y, ang = self.molt
-            draw_molt(bg, x, y, ang, 170, 150)
+        # (la piel vieja de Xolthar se pinta al final de todo: ver _draw_animated)
 
     def _draw_secret(self, bg):
         """Decoración de la sala secreta y la cortina que tapa su entrada."""
@@ -1218,6 +1279,7 @@ class CaveMap:
         cands = [(tx, ty) for tx, ty in self.land
                  if 2 <= ty <= 14 and self.g[ty - 1][tx] and self.g[ty - 2][tx] and not self.g[ty][tx - 1] and not self.g[ty][tx + 1]
                  and math.dist(self._px((tx, ty)), NEST) > 700 and not self.secret_mask[ty * self.w + tx]]
+        self.sky_crack = None
         if not cands:
             self.skylight = None
             return
@@ -1236,6 +1298,7 @@ class CaveMap:
         upper = [(cx_ - nx * w_ * R0.uniform(.6, 1.1), cy_ - ny * w_ * R0.uniform(.6, 1.1)) for (cx_, cy_), w_ in zip(center, widths)]
         lower = [(cx_ + nx * w_ * R0.uniform(.6, 1.1), cy_ + ny * w_ * R0.uniform(.6, 1.1)) for (cx_, cy_), w_ in zip(center, widths)]
         poly = upper + lower[::-1]
+        self.sky_crack = (center, widths, (nx, ny))           # forma de la grieta (ahí se ven las estrellas)
         minx, miny = min(p[0] for p in poly) - 4, min(p[1] for p in poly) - 4
         sw, sh = int(max(p[0] for p in poly) - minx + 8), int(max(p[1] for p in poly) - miny + 8)
         sky = pygame.Surface((sw, sh), pygame.SRCALPHA)

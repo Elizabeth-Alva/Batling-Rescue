@@ -13,8 +13,11 @@ SR = 22050
 
 
 def init_mixer():
-    """Debe llamarse antes de pygame.init()."""
-    pygame.mixer.pre_init(SR, -16, 1, 512)
+    """Debe llamarse antes de pygame.init().
+    En el navegador el búfer es 4 veces más grande (2048 muestras ≈ 93 ms): allí un cuadro tarda 25-60 ms y con el
+    búfer chico (512 ≈ 23 ms) el sonido se quedaba sin datos entre cuadro y cuadro y tronaba. En la computadora
+    se queda chico (responde más rápido)."""
+    pygame.mixer.pre_init(SR, -16, 1, 2048 if IS_WEB else 512)
 
 
 def mk(dur, f, vol=0.6):
@@ -186,7 +189,48 @@ def build_sounds():
         return (math.sin(TAU * (90 - 40 * p) * t) * math.exp(-t * 10) * 1.2
                 + random.uniform(-1, 1) * math.exp(-t * 7) * .6)
     S['rockfall'] = mk(.45, rock, .55)
+    S['wind'] = build_wind()
+    S['chase_drums'] = build_chase_drums()
+    S['burrow'] = mk(1.2, lambda t, p: (math.sin(TAU * (34 + 8 * math.sin(TAU * 3 * t)) * t) * .9
+                                        + random.uniform(-1, 1) * (.5 + .4 * math.sin(TAU * 7 * t)))
+                     * min(1, p * 5) * (1 - p) ** .5, .7)       # tierra que se abre: retumbo y grava
     return S
+
+
+def build_chase_drums():
+    """Capa de tambores de la persecución: mismo tempo y duración que la música (150 bpm, 6.4 s), así suenan
+    juntos. Se escucha más cuando Xolthar está cerca."""
+    beat = .4
+    total = 16 * beat
+
+    def f(t, p):
+        e8 = t % (beat / 2)                                    # tambor grave en corcheas
+        i8 = int(t / (beat / 2)) % 32
+        v = .7 * math.sin(TAU * (78 - 30 * min(1, e8 * 14)) * e8) * math.exp(-e8 * 13) * (1.0 if i8 % 2 == 0 else .6)
+        b = t % (beat * 2)                                     # golpe seco en el 2 y el 4
+        if beat <= b < beat + .12:
+            q = b - beat
+            v += (random.uniform(-1, 1) * .5 + .4 * math.sin(TAU * 190 * q)) * math.exp(-q * 22)
+        e16 = t % (beat / 4)                                   # chasquidos rápidos (tensión)
+        v += random.uniform(-1, 1) * .12 * math.exp(-e16 * 60)
+        return v * min(1.0, t / .01, (total - t) / .01)
+    return mk(total, f, .45)
+
+
+def build_wind():
+    """Viento que silba en los pasillos angostos: aire suave (ruido filtrado) y un silbido que sube y baja.
+    Frecuencias enteras en LOOP segundos y orillas suavizadas: el bucle no "salta"."""
+    w = [0.0, 0.0, 0.0]                                     # aire grave, aire fino, fase del silbido
+
+    def f(t, p):
+        w[0] += .08 * (random.uniform(-1, 1) - w[0])        # aire grave
+        w[1] += .35 * (random.uniform(-1, 1) - w[1])        # aire más fino
+        gust = .55 + .45 * math.sin(TAU * t / 4) * math.sin(TAU * t / LOOP * 3)
+        pitch = 640 + 90 * math.sin(TAU * t / 4) + 40 * math.sin(TAU * t / 2)
+        w[2] += TAU * pitch / SR                            # la fase se acumula: el tono cambia suave, sin saltos
+        whistle = math.sin(w[2]) * .22 * gust ** 2
+        return (w[0] * 2.2 + w[1] * .5 + whistle) * gust * _loop_env(t)
+    return mk(LOOP, f, .5)
 
 
 def build_chase():
@@ -345,7 +389,8 @@ class SoundManager:
         name = name if name in self.S else 'amb'
         vol *= AMBIENT_MULT
         if self.amb_ch and self.amb_ch.get_busy() and self.amb_name == name:
-            self.amb_ch.set_volume(vol)
+            if abs(self.amb_ch.get_volume() - vol) > .03:   # (cambiar el volumen cada cuadro mete ruido)
+                self.amb_ch.set_volume(vol)
             return
         if self.amb_ch:
             self.amb_ch.stop()
@@ -353,6 +398,26 @@ class SoundManager:
         self.amb_ch = self.S[name].play(-1)
         if self.amb_ch:
             self.amb_ch.set_volume(vol)
+
+    def loop(self, name, vol):
+        """Sonido en bucle que solo cambia de volumen (p. ej. el viento de los pasillos). vol 0 lo pausa."""
+        loops = self.__dict__.setdefault('_loops', {})
+        ch = loops.get(name)
+        if vol <= .005:
+            if ch and ch.get_busy() and ch.get_sound() is self.S.get(name):
+                ch.set_volume(0.0)
+            return
+        snd = self.S.get(name)
+        if snd is None:
+            return
+        if not ch or not ch.get_busy() or ch.get_sound() is not snd:
+            ch = loops[name] = snd.play(-1)
+            if not ch:
+                return
+            ch.set_volume(min(1.0, vol))
+            return
+        if abs(ch.get_volume() - vol) > .03:              # solo si cambió de verdad (cambiarlo cada cuadro hace ruido)
+            ch.set_volume(min(1.0, vol))
 
     def music(self, name, vol=.55):
         """Música en su propio canal (no la corta el resto de los sonidos)."""

@@ -85,22 +85,34 @@ def stalactite(s, x, y0, h, dark, rim, rnd, down=True):
         pygame.draw.circle(s, (150, 190, 220), (int(tip[0]), int(tip[1] + 3)), 1)
 
 
-def cobweb(s, cx, cy, side, col, r):
-    """Telaraña de esquina con hilos radiales e hilos curvos que cuelgan (semitransparente)."""
+def cobweb_surface(side, col, r, sway=0.0, phase=0.0):
+    """Telaraña de esquina en su propia capa. sway > 0: los hilos se mecen (px en el borde), phase: momento del vaivén.
+    Con sway = 0 queda igual a la que se pinta en el fondo."""
     tmp = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
     ox, oy = r + 2, r + 2
     a0, a1 = (math.pi / 2, math.pi) if side > 0 else (0, math.pi / 2)
     spokes = [a0 + (a1 - a0) * k / 6 for k in range(7)]
-    for a in spokes:
-        pygame.draw.aaline(tmp, (*col, 170), (ox, oy), (ox + math.cos(a) * r, oy + math.sin(a) * r))
+
+    def pt(a, rk, i):                                   # punto del hilo, movido por el vaivén (más en la orilla)
+        if sway:
+            a += sway * rk / r * math.sin(phase + i * .9 + rk * 2.4)
+        return ox + math.cos(a) * r * rk, oy + math.sin(a) * r * rk
+    for i, a in enumerate(spokes):
+        pygame.draw.aalines(tmp, (*col, 170), False, [(ox, oy)] + [pt(a, rk, i) for rk in (.5, 1.0)])
     for rk in (.25, .45, .65, .85):
+        sag = r * .05 * (1 + (sway * .12 * math.sin(phase * 1.3 + rk * 5) if sway else 0))
         for i in range(len(spokes) - 1):
             a, b = spokes[i], spokes[i + 1]
-            p0 = (ox + math.cos(a) * r * rk, oy + math.sin(a) * r * rk)
-            p1 = (ox + math.cos(b) * r * rk, oy + math.sin(b) * r * rk)
-            mid = ((p0[0] + p1[0]) / 2 - math.cos((a + b) / 2) * r * .05, (p0[1] + p1[1]) / 2 - math.sin((a + b) / 2) * r * .05)
+            p0, p1 = pt(a, rk, i), pt(b, rk, i + 1)
+            mid = ((p0[0] + p1[0]) / 2 - math.cos((a + b) / 2) * sag, (p0[1] + p1[1]) / 2 - math.sin((a + b) / 2) * sag)
             pygame.draw.aalines(tmp, (*col, 120), False, [p0, mid, p1])
     pygame.draw.circle(tmp, (*col, 200), (int(ox + math.cos((a0 + a1) / 2) * r * .5), int(oy + math.sin((a0 + a1) / 2) * r * .5)), 1)
+    return tmp, ox, oy
+
+
+def cobweb(s, cx, cy, side, col, r):
+    """Telaraña de esquina con hilos radiales e hilos curvos que cuelgan (semitransparente)."""
+    tmp, ox, oy = cobweb_surface(side, col, r)
     s.blit(tmp, (cx - ox, cy - oy))
 
 

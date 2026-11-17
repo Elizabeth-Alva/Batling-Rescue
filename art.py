@@ -10,6 +10,7 @@ import random
 import pygame
 
 from settings import W, H, TAU
+from ui import BAT_CACHE                 # (navegador: murciélagos ya dibujados, se reutilizan)
 
 ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
 
@@ -91,8 +92,31 @@ def _quad(a, c, b, n=5):
     return out
 
 
+_SIL = {}
+
+
 def bat_sil(s, x, y, flap, sc=1.0, col=(8, 6, 14), rim=None, eyes=None, ang=0.0, notch=False, muzzle=None,
             scars=None, tuft=None):
+    """En el navegador cada pose se dibuja una vez y luego solo se copia (las colonias tienen decenas)."""
+    if not BAT_CACHE:
+        return _bat_sil(s, x, y, flap, sc, col, rim, eyes, ang, notch, muzzle, scars, tuft)
+    wq = round(math.sin(flap) * 12)
+    aq = round(ang * 20) / 20
+    key = (wq, round(sc, 2), col, rim, eyes, aq, notch, muzzle, scars, tuft)
+    spr = _SIL.get(key)
+    if spr is None:
+        if len(_SIL) > 2500:
+            _SIL.clear()
+        r = int(64 * sc) + 6
+        img = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
+        _bat_sil(img, r, r, math.asin(wq / 12), sc, col, rim, eyes, aq, notch, muzzle, scars, tuft)
+        spr = _SIL[key] = (img, r)
+    img, r = spr
+    s.blit(img, (int(x) - r, int(y) - r))
+
+
+def _bat_sil(s, x, y, flap, sc=1.0, col=(8, 6, 14), rim=None, eyes=None, ang=0.0, notch=False, muzzle=None,
+             scars=None, tuft=None):
     """Silueta de murciélago de frente: alas festoneadas con huesos de los dedos, orejas y ojos.
     notch: muesca en la oreja izquierda (Abuela Canela) · muzzle: color del hocico canoso ·
     scars: color de las cicatrices pequeñas de las alas · tuft: mechón entre las orejas (Chispa)."""
@@ -319,8 +343,14 @@ def air_wisps(s, t, seed, n, rect, d=(1, 0), col=(200, 205, 220), speed=60, life
         pygame.draw.lines(s, lerp((0, 0, 0), col, fade * .9), False, pts, 1)
 
 
-def draw_molt(s, x, y, ang, length=150, alpha=170, seed=5):
-    """La piel vieja de Xolthar: silueta pálida y vacía de dieciséis segmentos, quieta (una muda no se anima)."""
+def draw_molt(s, x, y, ang, length=150, alpha=170, seed=5, sway=0.0, phase=0.0):
+    """La piel vieja de Xolthar: silueta pálida y vacía de dieciséis segmentos. Por sí sola no se mueve (es una
+    muda); con sway > 0 la corriente de aire de la mina la mece un poco (más en la cola, que está suelta)."""
+    rot = molt_surface(ang, length, alpha, seed, sway, phase)
+    s.blit(rot, rot.get_rect(center=(int(x), int(y))))
+
+
+def molt_surface(ang, length=150, alpha=170, seed=5, sway=0.0, phase=0.0):
     rnd = random.Random(seed)
     pad = int(length * .35)
     tw, th = int(length + 2 * pad), int(length * .6 + 2 * pad)
@@ -330,7 +360,8 @@ def draw_molt(s, x, y, ang, length=150, alpha=170, seed=5):
     pts, rads = [], []
     for i in range(n):
         u = i / (n - 1)
-        pts.append((cx + (.5 - u) * length, cy + math.sin(u * 4.2 + 1) * length * .06))
+        wave = sway * u * u * math.sin(phase - u * 5.5) if sway else 0.0      # la cola suelta se mece con el aire
+        pts.append((cx + (.5 - u) * length, cy + math.sin(u * 4.2 + 1) * length * .06 + wave))
         rads.append(length * .05 * (1 - .4 * u))                    # 40 % más chica hacia la cola
     nrm = []
     for i in range(n):
@@ -372,8 +403,7 @@ def draw_molt(s, x, y, ang, length=150, alpha=170, seed=5):
         pygame.draw.circle(tmp, hollow, (int(hx + hr * .95), int(hy + sd * hr * .45)), max(1, int(hr * .28)))
         pygame.draw.lines(tmp, edge, False, [(hx + hr * 1.5, hy + sd * hr * .4), (hx + hr * 2.4, hy + sd * hr * .95),
                                              (hx + hr * 2.8, hy + sd * hr * .3)], 2)
-    rot = pygame.transform.rotate(tmp, -math.degrees(ang))
-    s.blit(rot, rot.get_rect(center=(int(x), int(y))))
+    return pygame.transform.rotate(tmp, -math.degrees(ang))
 
 
 def xolthar_sil(s, t, hx, hy, ang, sc=1.0, awake=True, n=16, glow_img=None):

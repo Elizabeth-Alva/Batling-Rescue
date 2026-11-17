@@ -39,6 +39,9 @@ class Salamander:
         self.alpha = 1.0
         self.ripples = []
         self.sub = 0.0                              # qué tanto se hundió con la piedra (0 = a flote)
+        self.bubbles = []                           # burbujitas que suben donde se escondió [x, y, edad]
+        self.bubble_t = 0.0
+        self.peek = None                            # escondida, a ratos asoma solo los ojos: [inicio, duración] o None
 
     def _water(self, cave, x, y):
         return cave.is_water(x, y)
@@ -58,6 +61,10 @@ class Salamander:
         for r in self.ripples:
             r[2] += dt
         self.ripples = [r for r in self.ripples if r[2] < 1.2]
+        if self.bubbles:
+            for bb in self.bubbles:
+                bb[2] += dt
+            self.bubbles = [bb for bb in self.bubbles if bb[2] < .8]
         if self.state in ('calm', 'rest'):
             self.alpha = min(1.0, self.alpha + dt * 2)
             near = [(math.dist((self.x, self.y), (bat.x, bat.y)), bat.x, bat.y)]
@@ -119,7 +126,16 @@ class Salamander:
             if self.st > .4:
                 self.state, self.st = 'hidden', 0.0
                 self.hide_for = random.uniform(3, 5)
+                self.bubble_t = random.uniform(.2, .5)
+                self.peek = [random.uniform(1.0, 1.8), random.uniform(1.0, 1.6)] if random.random() < .6 else None
         elif self.state == 'hidden':                          # reaparece lejos del murciélago
+            self.bubble_t -= dt                               # burbujitas donde se escondió
+            if self.bubble_t <= 0 and len(self.bubbles) < 4:
+                self.bubble_t = random.uniform(.35, .9)
+                self.bubbles.append([self.x + random.uniform(-5, 5), self.y + random.uniform(-4, 4), 0.0])
+            if self.peek and self.peek_k > 0 and math.dist((self.x, self.y), (bat.x, bat.y)) < 90:
+                self.peek = None                              # Mullo se acercó: se vuelve a hundir de golpe
+                self.ripples.append([self.x, self.y, 0.0])
             if self.st > self.hide_for:
                 spot = self._far_water(cave, bat)
                 if spot:
@@ -148,6 +164,35 @@ class Salamander:
     @property
     def visible(self):
         return self.state != 'hidden' and self.alpha > .05
+
+    @property
+    def peek_k(self):
+        """0-1: qué tanto asoman los ojos sobre el agua mientras está escondida."""
+        if self.state != 'hidden' or not self.peek:
+            return 0.0
+        q = (self.st - self.peek[0]) / self.peek[1]
+        if q <= 0 or q >= 1:
+            return 0.0
+        return min(1.0, q / .2, (1 - q) / .2)
+
+    def draw_peek(self, s, cam):
+        """Escondida: burbujitas que suben y, a ratos, solo sus dos ojitos sobre el agua mirando a Mullo."""
+        for bx, by, bt in self.bubbles:
+            px, py = cam.apply(bx, by - bt * 6)
+            k = 1 - bt / .8
+            r = 1 if bt < .5 else 2                           # al final se abre y se revienta
+            pygame.draw.circle(s, (int(110 * k), int(140 * k), int(200 * k)), (int(px), int(py)), r, 1)
+        k = self.peek_k
+        if k <= 0:
+            return
+        sx, sy = cam.apply(self.x, self.y)
+        ca, sa = math.cos(self.ang), math.sin(self.ang)
+        g = int(255 * k)
+        pygame.draw.ellipse(s, (int(40 * k), int(56 * k), int(110 * k)), (sx - 9, sy - 4, 18, 8), 1)   # anillito de agua
+        for sd in (-1, 1):
+            ex, ey = sx - sa * sd * 2.6, sy + ca * sd * 2.6
+            pygame.draw.circle(s, (int(200 * k), int(170 * k), int(140 * k)), (int(ex), int(ey)), 2)
+            s.fill((g // 10, g // 14, g // 10), (int(ex), int(ey), 1, 1))
 
     def draw(self, s, sx, sy, cam=None):
         for rx, ry, rt in self.ripples:                       # ondas al sumergirse / salir

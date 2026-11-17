@@ -24,6 +24,12 @@ SPECS = {
 NAMES = {'spider': 'araña', 'beetle': 'escarabajo', 'hunter': 'cazador', 'boss': 'Xolthar'}
 BOSS_SPEED = 178          # más lento que Mullo cargando crías (211) y mucho más que el impulso
 BOSS_WAKE_T = 1.6        # tarda en despertar del todo: Mullo tiene un instante para huir
+# Si se queda muy atrás o se atora, rompe el piso y sale cerca de Mullo (siempre DETRÁS de ella y con aviso)
+BURROW_FAR = 640         # px: «muy atrás»
+BURROW_FAR_T = 2.2       # s que tiene que pasar así de lejos
+BURROW_STUCK = 2.4       # s casi sin avanzar (atorado)
+BURROW_CD = 7.0          # s entre una salida y la siguiente
+DIVE_T, WARN_T, EMERGE_T = .75, 1.0, .6
 MAX_HUNTERS = 3
 
 
@@ -50,6 +56,8 @@ class Enemy:
         self.gait = random.random()                   # ciclos de paso (las patas siguen lo que avanza el cuerpo)
         self._gx, self._gy = x, y
         self.path, self.repath = [], random.random() * .6
+        self.idle = 0.0                               # segundos quieto (los cazadores se acicalan las pinzas)
+        self.flip_t, self._stunned = 1.0, False       # escarabajo aturdido: tiempo desde que se volteó
         self.face = random.uniform(0, math.tau)       # hacia dónde mira
         n, gap = (7, 8) if kind == 'hunter' else (16, 17) if kind == 'boss' else (0, 0)
         self.gap = gap
@@ -89,6 +97,10 @@ class Enemy:
         self._gx, self._gy = self.x, self.y
         self.gait += min(moved, 30) / self.STRIDE + dt * .12      # quieta: solo acomoda las patas de vez en cuando
         if self.stun > 0:
+            if not self._stunned:
+                self._stunned, self.flip_t = True, 0.0
+            self.flip_t += dt
+            self.idle = 0.0
             self.stun -= dt
             self.vx *= .9
             self.vy *= .9
@@ -96,6 +108,7 @@ class Enemy:
             self.y += self.vy * dt
             self._finish(cave)
             return
+        self._stunned = False
         spec = self.spec
         bat_safe = math.dist((b.x, b.y), NEST) < SAFE_R or cave.in_secret(b.x, b.y)    # nido o sala secreta
         if (d < p.detect_radius * spec['det'] and self.state != 'chase' and not bat_safe and cave.los((self.x, self.y), (b.x, b.y), False)
@@ -135,6 +148,7 @@ class Enemy:
             self._move(dt, goal, sp, cave)
         else:
             self.vx = self.vy = 0
+        self.idle = self.idle + dt if (self.vx == 0 and self.vy == 0 and self.state != 'chase') else 0.0
         self._finish(cave)
 
     def _finish(self, cave):
@@ -193,6 +207,95 @@ class Boss(Enemy):
                       y + math.sin(-math.pi / 2 - 1.0 - i * .42) * (28 + i * 2.6) - math.sin(-math.pi / 2 - 1.0) * 28)
                      for i in range(n)]
         self.segs[0] = (x, y)
+        self.noise_hits = 0                                    # gritos de Mullo cerca mientras duerme (al 3.º despierta)
+        self.angry = False                                     # lo despertaron a gritos: ya no deja de seguirla
+        self.burrow = None                                     # rompe el piso: {'phase', 't', 'hole', 'target', ...}
+        self.burrow_cd = 0.0
+        self.far_t = 0.0
+        self._stuck_ref, self._stuck_t = (x, y), 0.0
+
+    # ------------------------------------------------------------ rompe el piso
+    @property
+    def underground(self):
+        """True mientras no se le puede tocar (bajo tierra o entrando/saliendo del agujero)."""
+        bw = self.burrow
+        return bw is not None and not (bw['phase'] == 'emerge' and bw['t'] > .2)
+
+    def hidden_from(self):
+        """Punto del agujero por el que entra o sale: los segmentos que están ahí no se dibujan (están bajo tierra)."""
+        bw = self.burrow
+        if bw is None:
+            return None
+        return bw['hole'] if bw['phase'] == 'dive' else bw.get('target')
+
+    def _start_burrow(self, g):
+        self.burrow = dict(phase='dive', t=0.0, hole=(self.x, self.y), target=None, home=False)
+        self.vx = self.vy = 0.0
+        g.boss_event('dive', self.x, self.y)
+
+    def _burrow_update(self, dt, g):
+        bw, b = self.burrow, g.bat
+        bw['t'] += dt
+        safe = (math.dist((b.x, b.y), NEST) < SAFE_R and not b.carry) or g.cave.in_secret(b.x, b.y)
+        if safe and not self.angry:
+            bw['home'] = True                                  # Mullo ya está a salvo: saldrá en su guarida
+        if bw['phase'] == 'dive':                              # se mete: el cuerpo entra al agujero como un tren
+            hx, hy = bw['hole']
+            sp = 520 * dt
+            segs = []
+            for sx, sy in self.segs:
+                d = math.hypot(hx - sx, hy - sy)
+                segs.append((hx, hy) if d <= sp else (sx + (hx - sx) / d * sp, sy + (hy - sy) / d * sp))
+            self.segs = segs
+            if bw['t'] >= DIVE_T:
+                bw['phase'], bw['t'] = 'under', 0.0
+                bw['dur'] = 1.1
+                g.boss_event('under', hx, hy)
+        elif bw['phase'] == 'under':                           # viaja bajo tierra (se ve y se oye el retumbo)
+            goal = self.lair if bw['home'] else (b.x, b.y)
+            k = min(1.0, bw['t'] / bw['dur'])
+            hx, hy = bw['hole']
+            self.x, self.y = hx + (goal[0] - hx) * k * .85, hy + (goal[1] - hy) * k * .85
+            g.boss_event('trail', self.x, self.y)
+            if bw['t'] >= bw['dur']:
+                tgt = (self.lair[0], self.lair[1]) if bw['home'] else g.emerge_spot(self)
+                bw['target'] = tgt or bw['hole']
+                bw['phase'], bw['t'] = 'warn', 0.0
+                g.boss_event('warn', *bw['target'])
+        elif bw['phase'] == 'warn':                            # el piso se agrieta: aviso antes de salir
+            if bw['t'] >= (WARN_T * .5 if bw['home'] else WARN_T):
+                tx, ty = bw['target']
+                self.x, self.y = tx, ty
+                self.segs = [(tx, ty)] * len(self.segs)
+                self.face = math.atan2(b.y - ty, b.x - tx)
+                bw['phase'], bw['t'] = 'emerge', 0.0
+                g.boss_event('emerge', tx, ty)
+        elif bw['phase'] == 'emerge':                          # sale del piso y el cuerpo lo sigue
+            if not bw['home']:
+                self._move(dt, (b.x, b.y), BOSS_SPEED * 1.15, g.cave)
+            self._finish(g.cave)
+            if bw['t'] >= EMERGE_T:
+                self.burrow, self.burrow_cd, self.far_t = None, BURROW_CD, 0.0
+                self._stuck_ref, self._stuck_t = (self.x, self.y), 0.0
+                if bw['home']:
+                    self.state, self.path = 'return', []
+
+    def _check_burrow(self, dt, g):
+        """¿Se quedó muy atrás o está atorado? Entonces rompe el piso. Nunca cerca del nido."""
+        b = g.bat
+        self.burrow_cd = max(0.0, self.burrow_cd - dt)
+        d = math.dist((self.x, self.y), (b.x, b.y))
+        self.far_t = self.far_t + dt if d > BURROW_FAR else 0.0
+        if math.dist((self.x, self.y), self._stuck_ref) > 60:
+            self._stuck_ref, self._stuck_t = (self.x, self.y), 0.0
+        else:
+            self._stuck_t += dt
+        if self.burrow_cd > 0 or math.dist((b.x, b.y), NEST) < SAFE_R + 260:
+            return False
+        if self.far_t > BURROW_FAR_T or (self._stuck_t > BURROW_STUCK and d > 220):
+            self._start_burrow(g)
+            return True
+        return False
 
     def wake(self):
         if self.state in ('sleep', 'return'):
@@ -221,9 +324,17 @@ class Boss(Enemy):
             self.waking -= dt
             self.anim += dt * 3
             return
+        if self.burrow is not None:                           # rompiendo el piso / bajo tierra
+            self._burrow_update(dt, g)
+            return
         if self.state == 'chase':
-            if (math.dist((b.x, b.y), NEST) < SAFE_R and not b.carry) or g.cave.in_secret(b.x, b.y):   # a salvo o escondida: vuelve a su guarida
+            safe = (math.dist((b.x, b.y), NEST) < SAFE_R and not b.carry) or g.cave.in_secret(b.x, b.y)
+            if safe and not self.angry:                        # a salvo o escondida: vuelve a su guarida
                 self.state, self.path = 'return', []
+            elif safe:                                         # furioso: se queda rondando afuera (al nido no entra)
+                self._move(dt, (b.x, b.y), BOSS_SPEED * .7, g.cave)
+            elif hasattr(g, 'emerge_spot') and self._check_burrow(dt, g):
+                return
             else:
                 self._move(dt, (b.x, b.y), BOSS_SPEED, g.cave)
         elif self.state == 'return':
