@@ -6,6 +6,7 @@ TitleBackdrop  las tres cuevas; cambia de una a otra con un fundido (al ritmo de
 Las cuevas se generan una sola vez (al cargar el juego) y se guardan en el juego.
 """
 import math
+import os
 import random
 from types import SimpleNamespace
 
@@ -16,10 +17,11 @@ from camera import Camera
 from fauna import Resting
 from lighting import Lighting
 from map import CaveMap
-from settings import W, H, NEST, TILE
+from settings import IS_WEB, W, H, NEST, TILE
 from story import PUPS, LEVELS
 
 SEED = 7
+STATIC_LIGHT = IS_WEB or bool(os.environ.get('BATLING_STATIC_TITLE'))   # navegador: luz de la portada precalculada
 NAMES = [n.strip() for lv in (1, 2, 3) for name, _ in PUPS[lv] for n in name.split(' y ')]
 
 
@@ -44,6 +46,7 @@ class TitleCave:
         cv.bg = None                                          # el mapa completo ya no hace falta (ahorra memoria)
         self.path = self._flight_path()
         self.t = 0.0
+        self._lit = None
         self.bat = SimpleNamespace(x=NEST[0], y=NEST[1], carry=None)
         self.g = SimpleNamespace(camera=cam, bat=self.bat, pups=[], cave=cv, echo_t=0.0,
                                  game=SimpleNamespace(brightness=2))
@@ -91,8 +94,22 @@ class TitleCave:
         for r in self.resting:
             r.update(dt)
 
+    def _lit_view(self):
+        """La cueva ya iluminada, calculada UNA vez (sin la luz de Mullo, que va aparte)."""
+        if self._lit is None:
+            img = self.view.copy()
+            b = self.bat
+            bx, by = b.x, b.y
+            b.x, b.y = -9999, -9999                           # (su luz, lejos: no queda «pegada» en la imagen)
+            self.light.apply(img, self.g, 0.0)
+            b.x, b.y = bx, by
+            self._lit = img
+        return self._lit
+
     def draw(self, s, t=None):
         t = self.t if t is None else t
+        if STATIC_LIGHT:
+            return self._draw_static(s, t)
         cam, b = self.camera, self.bat
         s.blit(self.view, (0, 0))
         for r in self.resting:
@@ -105,6 +122,38 @@ class TitleCave:
         for r in self.resting:
             r.draw_fx(s, cam)
         ui.draw_bat_tilted(s, sx, sy, t * 13, tilt)           # Mullo al final: vuela POR ENCIMA de sus crías
+
+
+    def _draw_static(self, s, t):
+        """Navegador: la portada se dibuja sobre la cueva ya iluminada (una copia de imagen en vez de calcular toda
+        la luz en cada cuadro, que era lo más pesado del menú) y Mullo lleva su propio resplandor."""
+        cam, b = self.camera, self.bat
+        s.blit(self._lit_view(), (0, 0))
+        for r in self.resting:
+            r.draw(s, cam)
+        x0, y0 = self.mullo_at(t - .05)
+        b.x, b.y = self.mullo_at(t)
+        tilt = max(-.45, min(.45, (b.x - x0) * .06))
+        sx, sy = cam.apply(b.x, b.y)
+        g = _mullo_glow()
+        s.blit(g, (int(sx) - g.get_width() // 2, int(sy) - g.get_height() // 2), special_flags=pygame.BLEND_RGB_ADD)
+        for r in self.resting:
+            r.draw_fx(s, cam)
+        ui.draw_bat_tilted(s, sx, sy, t * 13, tilt)
+
+
+_GLOW = []
+
+
+def _mullo_glow(r=110):
+    """Resplandor suave alrededor de Mullo (se suma a la imagen: aclara la cueva donde vuela)."""
+    if not _GLOW:
+        g = pygame.Surface((2 * r, 2 * r))
+        for i in range(r, 0, -2):
+            k = (1 - i / r) ** 1.6
+            pygame.draw.circle(g, (int(46 * k), int(42 * k), int(64 * k)), (r, r), i)
+        _GLOW.append(g)
+    return _GLOW[0]
 
 
 class TitleBackdrop:

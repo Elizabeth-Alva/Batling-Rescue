@@ -56,6 +56,17 @@ VIEWPORT = ('<meta name="viewport" content="width=device-width, initial-scale=1.
             'maximum-scale=1.0, user-scalable=no, viewport-fit=cover">')
 
 
+# En algunos teléfonos (y en la app de Android) el navegador no deja fijar la pantalla en horizontal: pygbag lo
+# intenta, falla, y muestra un aviso «Rejection occurred: screen.orientation.lock()...». Aquí ese intento falla
+# en silencio (la app de Android ya se queda en horizontal sola).
+NO_LOCK_ALERT = (
+    "<script>(function(){try{var P=window.ScreenOrientation&&ScreenOrientation.prototype;"
+    "var quiet=function(f){return function(){try{var r=f.apply(this,arguments);"
+    "return r&&r.catch?r.catch(function(){}):Promise.resolve();}catch(e){return Promise.resolve();}};};"
+    "if(P&&P.lock){P.lock=quiet(P.lock);}else if(screen.orientation){screen.orientation.lock=function(){"
+    "return Promise.resolve();};}}catch(e){}})();</script>")
+
+
 def fix_page(path):
     """Arregla la página que genera pygbag para que en el celular no se vea aplastada.
     La plantilla trae DOS etiquetas viewport y la segunda (height=device-height) anula a la primera
@@ -64,11 +75,11 @@ def fix_page(path):
     with open(path, encoding="utf-8") as f:
         html = f.read()
     html = re.sub(r'\s*<meta name="viewport"[^>]*>', '', html)
-    html = html.replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n    ' + VIEWPORT, 1)
+    html = html.replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n    ' + VIEWPORT + '\n    ' + NO_LOCK_ALERT, 1)
     html = html.replace('platform.document.body.style.background = "#7f7f7f"',
                         'platform.document.body.style.background = "#000000"')
     html = html.replace('background-color:powderblue;', 'background-color:#000000;')
-    if html.count('name="viewport"') != 1:
+    if html.count('name="viewport"') != 1 or 'ScreenOrientation' not in html:
         raise SystemExit("index.html: no se pudo arreglar la etiqueta viewport")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)

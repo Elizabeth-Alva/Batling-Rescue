@@ -14,10 +14,11 @@ SR = 22050
 
 def init_mixer():
     """Debe llamarse antes de pygame.init().
-    En el navegador el búfer es 4 veces más grande (2048 muestras ≈ 93 ms): allí un cuadro tarda 25-60 ms y con el
-    búfer chico (512 ≈ 23 ms) el sonido se quedaba sin datos entre cuadro y cuadro y tronaba. En la computadora
-    se queda chico (responde más rápido)."""
-    pygame.mixer.pre_init(SR, -16, 1, 2048 if IS_WEB else 512)
+    En el navegador el búfer es 8 veces más grande (4096 muestras ≈ 186 ms): allí el sonido se llena en el mismo
+    hilo que dibuja, y si un cuadro (o un tirón al cargar) tarda más que el búfer, el sonido se queda sin datos y
+    se traba. Con 512 (23 ms) tronaba; con 2048 (93 ms) aún se trababa a ratos. En la computadora se queda chico
+    (responde más rápido)."""
+    pygame.mixer.pre_init(SR, -16, 1, 4096 if IS_WEB else 512)
 
 
 def mk(dur, f, vol=0.6):

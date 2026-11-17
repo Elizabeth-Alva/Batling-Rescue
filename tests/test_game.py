@@ -2139,7 +2139,7 @@ class WebZoomTests(unittest.TestCase):
     def test_web_audio_buffer_is_bigger(self):
         import inspect
         import sound
-        self.assertIn('2048 if IS_WEB', inspect.getsource(sound.init_mixer))
+        self.assertIn('4096 if IS_WEB', inspect.getsource(sound.init_mixer))
 
     def test_baked_static_lights_match_one_by_one(self):
         import random as rnd
@@ -2184,3 +2184,36 @@ class WebZoomTests(unittest.TestCase):
         self.assertTrue(fit_canvas(cv, 740, 340))
         self.assertEqual((cv.style.width, cv.style.height), ('510px', '340px'))
         self.assertFalse(fit_canvas(cv, 740, 340))           # ya estaba bien: no lo toca
+
+    def test_web_pacer_gives_even_frames(self):
+        from game import WebPacer
+        for cost, rate in ((.008, 60), (.025, 30), (.040, 20)):
+            p, busy, dts = WebPacer(), 0.0, []
+            for tick in range(60 * 15):                      # turnos del navegador cada 1/60 s
+                t = tick / 60
+                if t < busy:
+                    continue
+                dt = p.next_frame(t)
+                if dt is None:
+                    continue
+                busy = t + cost
+                p.frame_done(busy)
+                dts.append(round(dt * 1000))
+            self.assertEqual(p.rate, rate)
+            self.assertEqual(len(set(dts[-60:])), 1)          # todos los cuadros avanzan lo mismo: sin tirones
+
+    def test_static_title_light_looks_like_the_real_one(self):
+        import title_cave
+        tc = title_cave.TitleCave(level=1)
+        a, b = pygame.Surface((W, H)), pygame.Surface((W, H))
+        old = title_cave.STATIC_LIGHT
+        try:
+            title_cave.STATIC_LIGHT = False
+            tc.draw(a, 1.0)
+            title_cave.STATIC_LIGHT = True
+            tc.draw(b, 1.0)
+        finally:
+            title_cave.STATIC_LIGHT = old
+        pa, pb = pygame.image.tobytes(a, 'RGB'), pygame.image.tobytes(b, 'RGB')
+        mean = sum(abs(x - y) for x, y in zip(pa[::97], pb[::97])) / len(pa[::97])
+        self.assertLess(mean, 6)                              # casi igual a la vista

@@ -43,6 +43,62 @@ def fit_canvas(canvas, iw, ih):
     return False
 
 
+class WebPacer:
+    """Ritmo de cuadros en el navegador (y la app de Android).
+    Allí el navegador da un turno cada 1/60 s, pero un cuadro del juego tarda 20-50 ms: unos cuadros salían a
+    los 17 ms, otros a los 33, otros a los 50, y el movimiento se veía a tirones aunque el promedio fuera bueno.
+    Aquí se elige un ritmo FIJO que el teléfono sí aguanta (60, 30 o 20 cuadros por segundo, según lo que
+    tarde dibujar) y cada cuadro avanza exactamente ese tiempo: así todo se mueve parejo. Si el teléfono se
+    alivia, vuelve a subir el ritmo."""
+    RATES = (60, 30, 20)
+
+    def __init__(self):
+        self.level = 1                                # empieza a 30 (lo seguro); sube a 60 si sobra tiempo
+        self.last = None
+        self.cost = deque(maxlen=20)                  # lo que tardaron los últimos cuadros (actualizar + dibujar)
+        self.t_start = 0.0
+        self.since_change = 0
+
+    @property
+    def rate(self):
+        return self.RATES[self.level]
+
+    def next_frame(self, now):
+        """dt del cuadro si ya toca dibujar; None si hay que esperar al siguiente turno del navegador."""
+        if self.last is None:
+            self.last = now
+            self.t_start = now
+            return 1 / self.rate
+        period = 1 / self.rate
+        el = now - self.last
+        if el < period - .004:                         # (margen: los turnos del navegador no son exactos)
+            return None
+        steps = max(1, round(el / period))
+        if steps > 3:                                 # se congeló (cambió de pestaña, cargó algo): no salta
+            steps = 1
+            self.last = now
+        else:
+            self.last += steps * period
+            if now - self.last > period:              # se quedó atrás: se resincroniza
+                self.last = now
+        self.t_start = now
+        return min(.1, steps * period)
+
+    def frame_done(self, now):
+        self.cost.append(now - self.t_start)
+        self.since_change += 1
+        if len(self.cost) < self.cost.maxlen or self.since_change < 60:
+            return
+        avg = sorted(self.cost)[len(self.cost) * 3 // 4]   # (el 75 %: ignora un cuadro raro)
+        period = 1 / self.rate
+        if avg > period * .9 and self.level < len(self.RATES) - 1:
+            self.level += 1                           # no le alcanza: baja el ritmo
+            self.since_change = 0
+        elif self.level > 0 and avg < (1 / self.RATES[self.level - 1]) * .6:
+            self.level -= 1                           # le sobra de verdad: sube el ritmo
+            self.since_change = 0
+
+
 def _smooth_dt(hist, raw, cap):
     """Paso de tiempo suavizado: el reloj del sistema da cuadros de 15, 17, 16, 18 ms... y ese vaivén se nota como
     tirones al mover la cámara. Se usa el promedio de los últimos cuadros (y un tope para cuando la ventana se
@@ -241,8 +297,15 @@ class Game:
         frames, t_upd, t_drw, t_log = 0, 0.0, 0.0, time.perf_counter()
         hist = deque(maxlen=8)
         cap_fps = 165 if self.vsync else FPS             # con vsync manda el monitor (60, 75, 144 Hz...); tope por seguridad
+        pace = WebPacer() if IS_WEB else None
         while self.running:
-            dt = _smooth_dt(hist, self.clock.tick(cap_fps) / 1000, .1 if IS_WEB else .05)
+            if pace is not None:                         # navegador: cuadros a ritmo PAREJO (ver WebPacer)
+                dt = pace.next_frame(time.perf_counter())
+                if dt is None:
+                    await asyncio.sleep(0)               # aún no toca dibujar: se cede el turno al navegador
+                    continue
+            else:
+                dt = _smooth_dt(hist, self.clock.tick(cap_fps) / 1000, .05)
             now = time.perf_counter()
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
@@ -267,10 +330,13 @@ class Game:
             if IS_WEB and self._portrait(now):                # teléfono vertical: pide girarlo
                 self._draw_rotate_hint()
             pygame.display.flip()
+            if pace is not None:
+                pace.frame_done(time.perf_counter())
             await asyncio.sleep(0)               # cede el control al navegador (pygbag)
             if IS_WEB:                            # rendimiento visible en la consola del navegador
                 frames += 1
                 now = time.perf_counter()
                 if now - t_log >= 3:                # cada 3 s de reloj real
-                    _web_log(f"[perf] {frames / (now - t_log):.1f} fps | update {t_upd / frames * 1000:.1f} ms | draw {t_drw / frames * 1000:.1f} ms")
+                    _web_log(f"[perf] {frames / (now - t_log):.1f} fps (ritmo {pace.rate}) | update {t_upd / frames * 1000:.1f} ms"
+                             f" | draw {t_drw / frames * 1000:.1f} ms")
                     frames, t_upd, t_drw, t_log = 0, 0.0, 0.0, now
