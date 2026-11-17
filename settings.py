@@ -5,11 +5,23 @@ import sys
 IS_WEB = sys.platform == "emscripten"     # ejecutándose en el navegador (pygbag)
 
 W, H = 960, 640
-# Zoom del mundo: en el navegador (y la app de Android) la cueva se dibuja a 720x480 y se amplía a la pantalla.
-# Así todo se ve más grande en el celular y cada cuadro mueve 44 % menos píxeles (va más fluido). Menús, HUD y
-# cinemáticas siguen a resolución completa. En la computadora no hay zoom. (BATLING_ZOOM permite probarlo.)
+# Zoom del mundo: en el celular (navegador o app de Android) la cueva se dibuja a 640x426 y se amplía a la
+# pantalla. Así todo se ve más grande en la pantalla chica y cada cuadro mueve 56 % menos píxeles (va más
+# fluido). Menús, HUD y cinemáticas siguen a resolución completa. En la computadora (también en el navegador
+# de una laptop, donde ampliar se veía pixelado) no hay zoom. (BATLING_ZOOM permite probarlo.)
 import os as _os
-ZOOM = float(_os.environ.get('BATLING_ZOOM', 4 / 3 if IS_WEB else 1.0))
+
+
+def _touch_screen():
+    """¿El navegador corre en un teléfono o tableta (pantalla táctil)?"""
+    try:
+        import platform
+        return int(platform.window.navigator.maxTouchPoints or 0) > 0
+    except Exception:
+        return True
+
+
+ZOOM = float(_os.environ.get('BATLING_ZOOM', 1.5 if IS_WEB and _touch_screen() else 1.0))
 VIEW_W, VIEW_H = int(W / ZOOM) // 2 * 2, int(H / ZOOM) // 2 * 2     # lo que se ve del mundo, en píxeles del mundo
 FPS = 60
 TAU = math.tau

@@ -25,6 +25,9 @@ class CutsceneScene(Scene):
         self.shots = {}
         self.canvas = pygame.Surface((W, H))
         self.prev = None                          # última imagen de la toma anterior (fundido cruzado)
+        for name in dict.fromkeys(sh[0] for sh in self.data['shots']):   # todas las tomas se preparan YA (en negro):
+            if name not in self.shots:                # prepararlas a media escena trababa la voz de la Abuela
+                self.shots[name] = make_shot(name)
         self._start()
 
     def _start(self):

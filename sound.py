@@ -473,8 +473,11 @@ class SoundManager:
         solo cambia el volumen (6% en la portada, 3% en las demás)."""
         return self.song('cancan', MENU_SONG_VOL if vol is None else vol, fade_ms=1500)
 
-    def stop(self, keep_song=False):
-        """Corta los sonidos; la canción del menú se apaga suave salvo con keep_song=True."""
+    def stop(self, keep_song=False, now=False):
+        """Corta los sonidos; la canción del menú se apaga suave salvo con keep_song=True (now=True: de golpe)."""
+        if now and not keep_song and self.song_ch:
+            self.song_ch.stop()
+            self.song_name = None
         for i in range(pygame.mixer.get_num_channels()):
             if i != SONG_CH:
                 pygame.mixer.Channel(i).stop()

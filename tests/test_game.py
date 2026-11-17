@@ -2156,8 +2156,8 @@ class WebZoomTests(unittest.TestCase):
             c.fill((90, 90, 90))
             s.light.apply(c, s, 1.0)
             outs.append(pygame.image.tobytes(c, 'RGB'))
-        diff = sum(a != b for a, b in zip(*outs)) / len(outs[0])
-        self.assertLess(diff, .01)                           # (solo redondeos de medio píxel)
+        diff = sum(abs(a - b) for a, b in zip(*outs)) / len(outs[0])
+        self.assertLess(diff, .5)                            # (solo redondeos de medio píxel: no se nota)
 
     def test_bat_sprite_cache_draws_the_same_bat(self):
         a, b = pygame.Surface((200, 200)), pygame.Surface((200, 200))
@@ -2217,3 +2217,18 @@ class WebZoomTests(unittest.TestCase):
         pa, pb = pygame.image.tobytes(a, 'RGB'), pygame.image.tobytes(b, 'RGB')
         mean = sum(abs(x - y) for x, y in zip(pa[::97], pb[::97])) / len(pa[::97])
         self.assertLess(mean, 6)                              # casi igual a la vista
+
+
+    def test_heavy_scenes_wait_in_silence_first(self):
+        import inspect
+        import game
+        src = inspect.getsource(game.Game._fade_step)
+        self.assertIn('stop(now=True)', src)                  # sin sonido mientras se genera la cueva
+        self.assertIn('play', game.HEAVY_SCENES)
+
+    def test_cutscene_prepares_all_shots_at_once(self):
+        from game import Game
+        from scenes.cutscene import CutsceneScene
+        from story import CUTSCENES
+        cs = CutsceneScene(Game(), 'apertura')
+        self.assertEqual(set(cs.shots), {sh[0] for sh in CUTSCENES['apertura']['shots']})

@@ -43,6 +43,10 @@ def fit_canvas(canvas, iw, ih):
     return False
 
 
+HEAVY_SCENES = ('play', 'cut', 'end')         # escenas que tardan en prepararse
+HUSH_T = .3                                  # silencio antes de prepararlas (navegador)
+
+
 class WebPacer:
     """Ritmo de cuadros en el navegador (y la app de Android).
     Allí el navegador da un turno cada 1/60 s, pero un cuadro del juego tarda 20-50 ms: unos cuadros salían a
@@ -144,6 +148,7 @@ class Game:
         self.brightness = DEFAULT_BRIGHTNESS         # nivel de brillo (tecla B), se conserva entre partidas
         self.pending = None
         self.hold = 0.0                              # segundos en negro antes de mostrar la siguiente escena
+        self._hushed = False                         # (ya se apagó el sonido para la escena que viene)
         self.fade, self.fade_dir = 255.0, -1        # 255 = negro total
         self.veil = pygame.Surface((W, H))
         self.progress = self.new_progress()
@@ -240,10 +245,20 @@ class Game:
             return
         self.fade = min(255, max(0, self.fade + self.fade_dir * dt * 1100))
         if self.fade_dir > 0 and self.fade >= 255:
+            if self.pending[0] in HEAVY_SCENES and not self._hushed:
+                # Antes de generar la cueva o preparar una cinemática se apaga el sonido y se espera un instante
+                # en negro: en el navegador el sonido solo se rellena entre cuadro y cuadro, y si el juego se
+                # queda pensando (generar un nivel tarda unos segundos) el navegador repite el último pedacito
+                # de sonido una y otra vez. Así, lo que se repite es silencio.
+                self.sounds.stop(now=True)
+                self._hushed = True
+                if IS_WEB:
+                    self.hold = max(self.hold, HUSH_T)
             if self.hold > 0:                        # pantalla en negro un momento (antes del Acto I)
                 self.hold -= dt
                 return
             self.scene = self._make(self.pending)
+            self._hushed = False
             self.scene.enter()
             self.pending, self.fade_dir = None, -1
         elif self.fade_dir < 0 and self.fade <= 0:
