@@ -1,4 +1,4 @@
 pygame>=2.5
-pygbag>=0.9
+pygbag==0.9.3          # versión fija: una nueva puede cambiar la página del juego sin avisar
 soundfile>=0.12
 numpy

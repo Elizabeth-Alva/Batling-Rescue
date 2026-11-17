@@ -19,6 +19,30 @@ def _web_log(msg):
         print(msg)
 
 
+def canvas_size(iw, ih, w=W, h=H):
+    """Tamaño (en la página) del lienzo del juego: lo más grande que quepa en la ventana SIN deformarlo."""
+    k = min(iw / w, ih / h)
+    return max(1, int(w * k)), max(1, int(h * k))
+
+
+def fit_canvas(canvas, iw, ih):
+    """En el navegador: acomoda el lienzo a la ventana conservando la proporción 3:2.
+    pygbag lo mide una sola vez al arrancar, cuando el lienzo aún mide 1x1, y lo deja CUADRADO; solo lo corrige
+    si la ventana cambia de tamaño. En la app de Android (pantalla completa) eso no pasa nunca y el juego se
+    veía aplastado. Aquí se revisa cada segundo (también sirve al girar el teléfono)."""
+    if canvas is None:
+        return False
+    cw, ch = canvas_size(iw, ih)
+    if canvas.style.width != f"{cw}px" or canvas.style.height != f"{ch}px":
+        canvas.style.position = "absolute"
+        canvas.style.left = canvas.style.right = canvas.style.top = canvas.style.bottom = "0"
+        canvas.style.margin = "auto"
+        canvas.style.width = f"{cw}px"
+        canvas.style.height = f"{ch}px"
+        return True
+    return False
+
+
 def _smooth_dt(hist, raw, cap):
     """Paso de tiempo suavizado: el reloj del sistema da cuadros de 15, 17, 16, 18 ms... y ese vaivén se nota como
     tirones al mover la cámara. Se usa el promedio de los últimos cuadros (y un tope para cuando la ventana se
@@ -170,12 +194,14 @@ class Game:
             self.fade_dir = 0
 
     def _portrait(self, now):
-        """¿El navegador está en vertical? (se revisa cada segundo)"""
+        """¿El navegador está en vertical? (se revisa cada segundo, y de paso se acomoda el lienzo)"""
         if now - getattr(self, '_orient_t', -9) > 1.0:
             self._orient_t = now
             try:
                 import platform as _pf
-                self._is_portrait = int(_pf.window.innerHeight) > int(_pf.window.innerWidth)
+                iw, ih = int(_pf.window.innerWidth), int(_pf.window.innerHeight)
+                self._is_portrait = ih > iw
+                fit_canvas(_pf.window.document.getElementById('canvas'), iw, ih)
             except Exception:
                 self._is_portrait = False
         return self._is_portrait

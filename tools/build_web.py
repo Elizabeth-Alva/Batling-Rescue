@@ -11,6 +11,7 @@ Requiere:  pip install -r requirements-web.txt
    --zip además genera web_build/batlingrescue.zip para subirlo a itch.io
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -51,6 +52,28 @@ def stage():
                    check=True)
 
 
+VIEWPORT = ('<meta name="viewport" content="width=device-width, initial-scale=1.0, '
+            'maximum-scale=1.0, user-scalable=no, viewport-fit=cover">')
+
+
+def fix_page(path):
+    """Arregla la página que genera pygbag para que en el celular no se vea aplastada.
+    La plantilla trae DOS etiquetas viewport y la segunda (height=device-height) anula a la primera
+    (width=device-width): el teléfono mide mal el ancho de la pantalla y el juego sale deformado.
+    Se dejan en una sola, sin zoom con los dedos, y el fondo alrededor del juego en negro (no gris)."""
+    with open(path, encoding="utf-8") as f:
+        html = f.read()
+    html = re.sub(r'\s*<meta name="viewport"[^>]*>', '', html)
+    html = html.replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n    ' + VIEWPORT, 1)
+    html = html.replace('platform.document.body.style.background = "#7f7f7f"',
+                        'platform.document.body.style.background = "#000000"')
+    html = html.replace('background-color:powderblue;', 'background-color:#000000;')
+    if html.count('name="viewport"') != 1:
+        raise SystemExit("index.html: no se pudo arreglar la etiqueta viewport")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
 def build(make_zip):
     cmd = [sys.executable, "-m", "pygbag", "--build", "--no_opt", "--title", "BATling Rescue",
            "--app_name", "batlingrescue"]
@@ -58,6 +81,7 @@ def build(make_zip):
         cmd.append("--archive")
     subprocess.run(cmd + [APP], check=True)
     shutil.copytree(os.path.join(APP, "build", "web"), SITE)
+    fix_page(os.path.join(SITE, "index.html"))
     open(os.path.join(SITE, ".nojekyll"), "w").close()          # GitHub Pages: no procesar con Jekyll
     if make_zip and os.path.exists(os.path.join(APP, "build", "web.zip")):
         shutil.copy(os.path.join(APP, "build", "web.zip"), os.path.join(OUT, "batlingrescue.zip"))

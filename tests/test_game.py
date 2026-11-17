@@ -2174,3 +2174,13 @@ class WebZoomTests(unittest.TestCase):
             ui.BAT_CACHE = old
         same = sum(x == y for x, y in zip(pygame.image.tobytes(a, 'RGB'), pygame.image.tobytes(b, 'RGB')))
         self.assertGreater(same / (200 * 200 * 3), .995)
+
+    def test_web_canvas_keeps_3_by_2(self):
+        from types import SimpleNamespace
+        from game import canvas_size, fit_canvas
+        self.assertEqual(canvas_size(740, 340), (510, 340))   # teléfono horizontal: no queda cuadrado
+        self.assertEqual(canvas_size(1920, 1080), (1620, 1080))
+        cv = SimpleNamespace(style=SimpleNamespace(width='340px', height='340px'))
+        self.assertTrue(fit_canvas(cv, 740, 340))
+        self.assertEqual((cv.style.width, cv.style.height), ('510px', '340px'))
+        self.assertFalse(fit_canvas(cv, 740, 340))           # ya estaba bien: no lo toca
